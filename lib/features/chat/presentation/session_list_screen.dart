@@ -1,33 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:newchat/core/routing/app_routes.dart';
-import 'package:newchat/features/demo/demo_data.dart';
+import 'package:newchat/features/chat/application/session_list_controller.dart';
+import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class SessionListScreen extends StatefulWidget {
+class SessionListScreen extends ConsumerWidget {
   const SessionListScreen({
     super.key,
-    this.initialHasProvider = false,
   });
 
-  final bool initialHasProvider;
-
   @override
-  State<SessionListScreen> createState() => _SessionListScreenState();
-}
-
-class _SessionListScreenState extends State<SessionListScreen> {
-  late bool _hasProvider;
-
-  @override
-  void initState() {
-    super.initState();
-    _hasProvider = widget.initialHasProvider;
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    final sessions = ref.watch(sessionListControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -40,70 +27,67 @@ class _SessionListScreenState extends State<SessionListScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: false,
-                  icon: Icon(Icons.hub_outlined),
-                  label: Text('Setup'),
-                ),
-                ButtonSegment(
-                  value: true,
-                  icon: Icon(Icons.forum_outlined),
-                  label: Text('Demo sessions'),
-                ),
-              ],
-              selected: {_hasProvider},
-              onSelectionChanged: (selection) {
-                setState(() => _hasProvider = selection.single);
-              },
-            ),
-          ),
-          Expanded(
-            child: _hasProvider
-                ? ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: demoSessionMetas.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final session = demoSessionMetas[index];
-                      return Card(
-                        margin: EdgeInsets.zero,
-                        child: ListTile(
-                          leading: const Icon(Icons.chat_bubble_outline),
-                          title: Text(
-                            session.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            session.lastMessagePreview,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () =>
-                              context.go(AppRoutes.chatPath(session.id)),
-                        ),
-                      );
-                    },
-                  )
-                : _EmptyProviderState(
-                    message: l10n.providerRequired,
-                    onOpenSettings: () => context.go(AppRoutes.settings),
-                  ),
-          ),
-        ],
+      body: sessions.when(
+        data: (sessions) {
+          if (sessions.isEmpty) {
+            return _EmptyProviderState(
+              message: l10n.providerRequired,
+              onOpenSettings: () => context.go(AppRoutes.settings),
+            );
+          }
+          return _SessionList(sessions: sessions);
+        },
+        error: (error, _) => _EmptyProviderState(
+          message: l10n.providerRequired,
+          onOpenSettings: () => context.go(AppRoutes.settings),
+        ),
+        loading: () => const Center(
+          child: CircularProgressIndicator(),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.chatPath('new')),
         icon: const Icon(Icons.add_comment_outlined),
         label: Text(l10n.newChat),
       ),
+    );
+  }
+}
+
+class _SessionList extends StatelessWidget {
+  const _SessionList({
+    required this.sessions,
+  });
+
+  final List<ChatSessionMeta> sessions;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: sessions.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final session = sessions[index];
+        return Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.chat_bubble_outline),
+            title: Text(
+              session.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              session.lastMessagePreview,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go(AppRoutes.chatPath(session.id)),
+          ),
+        );
+      },
     );
   }
 }

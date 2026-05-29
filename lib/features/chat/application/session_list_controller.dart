@@ -1,5 +1,16 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
+
+final sessionListControllerProvider =
+    FutureProvider<List<ChatSessionMeta>>((ref) async {
+  final controller = SessionListController(
+    repository: ref.watch(sessionRepositoryProvider),
+  );
+  await controller.load();
+  return controller.sessions;
+});
 
 class SessionListController {
   SessionListController({

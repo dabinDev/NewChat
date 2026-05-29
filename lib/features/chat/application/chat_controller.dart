@@ -4,11 +4,11 @@ import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
+import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:newchat/features/providers/application/provider_controller.dart';
 
 final chatControllerProvider = Provider<ChatController>((ref) {
   return ChatController(
@@ -19,7 +19,7 @@ final chatControllerProvider = Provider<ChatController>((ref) {
 });
 
 final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
-  return InMemorySessionRepository();
+  return PersistentSessionRepository(ref.watch(appDatabaseProvider));
 });
 
 class ChatController {

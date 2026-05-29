@@ -1,23 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newchat/features/chat/application/chat_controller.dart';
+import 'package:newchat/features/chat/data/session_repository.dart';
+import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/presentation/chat_screen.dart';
 import 'package:newchat/features/chat/presentation/session_list_screen.dart';
 import 'package:newchat/features/demo/demo_data.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 void main() {
-  testWidgets('session list can render demo session cards', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: SessionListScreen(initialHasProvider: true),
+  testWidgets('session list renders repository session cards', (tester) async {
+    final repository = InMemorySessionRepository();
+    final now = DateTime.utc(2026, 5, 30);
+    await repository.saveDocument(
+      ChatSessionDocument(
+        id: 'real-session',
+        title: 'Real persisted chat',
+        providerId: 'provider-1',
+        modelId: 'gpt-4o-mini',
+        systemPrompt: '',
+        messages: [
+          ChatMessage(
+            id: 'message-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('Loaded from repository')],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: 1,
       ),
     );
 
-    expect(find.text('Planning notes'), findsOneWidget);
-    expect(find.text('Summarize the rollout checklist.'), findsOneWidget);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SessionListScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Real persisted chat'), findsOneWidget);
+    expect(find.text('Loaded from repository'), findsOneWidget);
+    expect(find.text('Planning notes'), findsNothing);
+    expect(find.byType(SegmentedButton<bool>), findsNothing);
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
   });
 
