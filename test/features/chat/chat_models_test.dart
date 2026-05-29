@@ -90,15 +90,19 @@ void main() {
     expect(copy.messages.single.parts.first.text, 'what is in this image?');
     expect(copy.messages.single.parts.last.type, MessagePartType.image);
     expect(copy.messages.single.parts.last.attachment?.id, 'attachment-1');
-    expect(copy.messages.single.parts.last.attachment?.localPath,
-        '/private/image.jpg');
+    expect(
+      copy.messages.single.parts.last.attachment?.localPath,
+      '/private/image.jpg',
+    );
     expect(copy.messages.single.parts.last.attachment?.mimeType, 'image/jpeg');
     expect(copy.messages.single.parts.last.attachment?.width, 1280);
     expect(copy.messages.single.parts.last.attachment?.height, 720);
     expect(copy.messages.single.parts.last.attachment?.fileSize, 2048);
     expect(copy.systemPrompt, 'Be concise.');
-    expect((json['messages']! as List<Object?>).single,
-        isA<Map<String, Object?>>());
+    expect(
+      (json['messages']! as List<Object?>).single,
+      isA<Map<String, Object?>>(),
+    );
     expect(
       (((json['messages']! as List<Object?>).single
               as Map<String, Object?>)['parts']! as List<Object?>)

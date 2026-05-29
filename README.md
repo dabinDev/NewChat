@@ -19,3 +19,9 @@ flutter pub get
 flutter test
 flutter run
 ```
+
+## Debug APK
+
+After a successful build, the debug APK is available at:
+
+`build/app/outputs/flutter-apk/app-debug.apk`

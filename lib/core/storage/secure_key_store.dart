@@ -13,14 +13,17 @@ class SecureKeyStore implements ProviderKeyStore {
 
   String _keyForProvider(String providerId) => 'provider_api_key_$providerId';
 
+  @override
   Future<void> writeProviderKey(String providerId, String apiKey) {
     return _storage.write(key: _keyForProvider(providerId), value: apiKey);
   }
 
+  @override
   Future<String?> readProviderKey(String providerId) {
     return _storage.read(key: _keyForProvider(providerId));
   }
 
+  @override
   Future<void> deleteProviderKey(String providerId) {
     return _storage.delete(key: _keyForProvider(providerId));
   }

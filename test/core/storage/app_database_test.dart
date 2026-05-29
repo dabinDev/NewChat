@@ -17,8 +17,12 @@ void main() {
 
     final appDatabase = AppDatabase(
       databasesPathProvider: () async => '/tmp',
-      databaseOpener: (_,
-          {required onCreate, required onOpen, required version}) {
+      databaseOpener: (
+        _, {
+        required onCreate,
+        required onOpen,
+        required version,
+      }) {
         openCount += 1;
         return completer.future;
       },
@@ -50,8 +54,12 @@ void main() {
 
     final appDatabase = AppDatabase(
       databasesPathProvider: () async => '/tmp',
-      databaseOpener: (_,
-          {required onCreate, required onOpen, required version}) {
+      databaseOpener: (
+        _, {
+        required onCreate,
+        required onOpen,
+        required version,
+      }) {
         openCount += 1;
         if (openCount == 1) {
           return completer.future;
@@ -86,8 +94,12 @@ void main() {
 
     final appDatabase = AppDatabase(
       databasesPathProvider: () async => '/tmp',
-      databaseOpener: (_,
-          {required onCreate, required onOpen, required version}) {
+      databaseOpener: (
+        _, {
+        required onCreate,
+        required onOpen,
+        required version,
+      }) {
         openCount += 1;
         if (openCount == 1) {
           return Future.value(firstDatabase);

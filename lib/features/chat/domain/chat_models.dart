@@ -185,20 +185,17 @@ class MessagePart {
     this.attachment,
   });
 
-  const MessagePart.text(String text)
+  const MessagePart.text(this.text)
       : type = MessagePartType.text,
-        text = text,
         attachment = null;
 
-  const MessagePart.error(String text)
+  const MessagePart.error(this.text)
       : type = MessagePartType.error,
-        text = text,
         attachment = null;
 
-  MessagePart.image(AttachmentRef attachment)
+  MessagePart.image(this.attachment)
       : type = MessagePartType.image,
-        text = null,
-        attachment = attachment;
+        text = null;
 
   final MessagePartType type;
   final String? text;
