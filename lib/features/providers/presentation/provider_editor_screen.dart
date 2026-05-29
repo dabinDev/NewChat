@@ -1,0 +1,23 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+class ProviderEditorScreen extends StatelessWidget {
+  const ProviderEditorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.settings),
+      ),
+      body: Center(
+        child: FilledButton(
+          onPressed: null,
+          child: Text(l10n.testConnection),
+        ),
+      ),
+    );
+  }
+}

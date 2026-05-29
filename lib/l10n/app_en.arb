@@ -1,0 +1,12 @@
+{
+  "appTitle": "NewChat",
+  "newChat": "New chat",
+  "settings": "Settings",
+  "send": "Send",
+  "stop": "Stop",
+  "providerRequired": "Add a provider before chatting.",
+  "imageUnsupported": "The selected model does not support images.",
+  "testConnection": "Test connection",
+  "connectionSucceeded": "Connection succeeded.",
+  "connectionFailed": "Connection failed."
+}
