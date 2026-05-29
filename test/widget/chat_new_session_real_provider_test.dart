@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
+import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/chat/presentation/chat_screen.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
@@ -101,7 +102,84 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets('new chat keeps sending in first created provider session',
+      (tester) async {
+    final sessionRepository = InMemorySessionRepository();
+    final chatProvider = _RecordingChatProvider();
+    final providerRepository = InMemoryProviderRepository(
+      providers: [
+        _provider(
+          id: 'real-provider',
+          defaultModelId: 'real-model',
+        ),
+      ],
+      models: const [
+        ModelConfig(
+          id: 'real-model',
+          displayName: 'Real Model',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: true,
+        ),
+      ],
+    );
+    final controller = ChatController(
+      repository: sessionRepository,
+      chatProvider: chatProvider,
+      providerRepository: providerRepository,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(sessionRepository),
+          providerRepositoryProvider.overrideWithValue(providerRepository),
+          chatControllerProvider.overrideWithValue(controller),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatScreen(sessionId: 'new'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _sendText(tester, 'First message');
+    await _sendText(tester, 'Second message');
+
+    final sessions = await sessionRepository.listMetas();
+    expect(sessions, hasLength(1));
+
+    final document =
+        (await sessionRepository.loadDocument(sessions.single.id))!;
+    final userMessages = document.messages
+        .where((message) => message.role == ChatRole.user)
+        .map((message) => message.fullText)
+        .toList();
+    expect(userMessages, ['First message', 'Second message']);
+
+    expect(chatProvider.requests, hasLength(2));
+    expect(_userTexts(chatProvider.requests.first), ['First message']);
+    expect(
+      _userTexts(chatProvider.requests.last),
+      ['First message', 'Second message'],
+    );
+  });
 }
+
+Future<void> _sendText(WidgetTester tester, String text) async {
+  await tester.enterText(find.byType(TextField), text);
+  await tester.pump();
+  await tester.tap(find.byIcon(Icons.send_outlined));
+  await tester.pumpAndSettle();
+}
+
+List<String> _userTexts(ChatRequest request) => request.messages
+    .where((message) => message.role == ChatRole.user)
+    .map((message) => message.fullText)
+    .toList();
 
 class _RecordingChatProvider implements ChatProvider {
   final requests = <ChatRequest>[];

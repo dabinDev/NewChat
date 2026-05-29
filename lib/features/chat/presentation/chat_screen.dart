@@ -222,7 +222,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() => _isSending = true);
     try {
       final controller = ref.read(chatControllerProvider);
-      if (widget.sessionId == 'new') {
+      if (widget.sessionId == 'new' && _session == null) {
         await controller.createSessionFromDefaultProvider(
           title: l10nTitle(text),
         );
