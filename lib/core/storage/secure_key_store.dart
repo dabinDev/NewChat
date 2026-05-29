@@ -1,6 +1,12 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-class SecureKeyStore {
+abstract interface class ProviderKeyStore {
+  Future<void> writeProviderKey(String providerId, String apiKey);
+  Future<String?> readProviderKey(String providerId);
+  Future<void> deleteProviderKey(String providerId);
+}
+
+class SecureKeyStore implements ProviderKeyStore {
   SecureKeyStore(this._storage);
 
   final FlutterSecureStorage _storage;

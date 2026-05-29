@@ -40,3 +40,49 @@ abstract interface class ProviderRepository {
   Future<void> saveModel(ModelConfig model);
   Future<void> deleteModel(String modelId);
 }
+
+class InMemoryProviderRepository implements ProviderRepository {
+  InMemoryProviderRepository({
+    List<ProviderConfig> providers = const [],
+    List<ModelConfig>? models,
+  })  : _providers = {
+          for (final provider in providers) provider.id: provider,
+        },
+        _models = {
+          for (final model in models ?? seedModelConfigs()) model.id: model,
+        };
+
+  final Map<String, ProviderConfig> _providers;
+  final Map<String, ModelConfig> _models;
+
+  @override
+  Future<void> deleteModel(String modelId) async {
+    _models.remove(modelId);
+  }
+
+  @override
+  Future<void> deleteProvider(String providerId) async {
+    _providers.remove(providerId);
+  }
+
+  @override
+  Future<List<ModelConfig>> listModels() async {
+    return _models.values.toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+  }
+
+  @override
+  Future<List<ProviderConfig>> listProviders() async {
+    return _providers.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  @override
+  Future<void> saveModel(ModelConfig model) async {
+    _models[model.id] = model;
+  }
+
+  @override
+  Future<void> saveProvider(ProviderConfig provider) async {
+    _providers[provider.id] = provider;
+  }
+}

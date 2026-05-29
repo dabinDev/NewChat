@@ -1,35 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:newchat/core/routing/app_routes.dart';
-import 'package:newchat/core/constants/app_constants.dart';
-import 'package:newchat/features/providers/domain/provider_models.dart';
+import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  static final List<ProviderConfig> _providers = [
-    ProviderConfig(
-      id: 'demo-openai',
-      name: 'Work gateway',
-      protocol: ProviderProtocol.openai,
-      baseUrl: 'https://api.openai.com/v1',
-      defaultModelId: 'gpt-4o-mini',
-      createdAt: DateTime(2026, 1, 1),
-      updatedAt: DateTime(2026, 1, 1),
-    ),
-  ];
-
-  String _selectedLanguage = 'system';
-
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final providers = ref.watch(providerListProvider).valueOrNull ?? const [];
+    final selectedLanguage = ref.watch(selectedLanguageProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -45,7 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-          for (final provider in _providers)
+          for (final provider in providers)
             ListTile(
               leading: const Icon(Icons.dns_outlined),
               title: Text(provider.name),
@@ -69,19 +57,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           RadioListTile<String>(
             value: 'system',
-            groupValue: _selectedLanguage,
+            groupValue: selectedLanguage,
             onChanged: _selectLanguage,
             title: const Text('System language'),
           ),
           RadioListTile<String>(
             value: 'zh',
-            groupValue: _selectedLanguage,
+            groupValue: selectedLanguage,
             onChanged: _selectLanguage,
             title: const Text('Chinese'),
           ),
           RadioListTile<String>(
             value: 'en',
-            groupValue: _selectedLanguage,
+            groupValue: selectedLanguage,
             onChanged: _selectLanguage,
             title: const Text('English'),
           ),
@@ -94,6 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (value == null) {
       return;
     }
-    setState(() => _selectedLanguage = value);
+    ref.read(selectedLanguageProvider.notifier).state = value;
   }
 }

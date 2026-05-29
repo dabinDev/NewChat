@@ -4,18 +4,36 @@ import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
+import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:newchat/features/providers/application/provider_controller.dart';
+
+final chatControllerProvider = Provider<ChatController>((ref) {
+  return ChatController(
+    repository: ref.watch(sessionRepositoryProvider),
+    chatProvider: ref.watch(chatProviderProvider),
+    providerRepository: ref.watch(providerRepositoryProvider),
+  );
+});
+
+final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
+  return InMemorySessionRepository();
+});
 
 class ChatController {
   ChatController({
     required SessionRepository repository,
     required ChatProvider chatProvider,
+    ProviderRepository? providerRepository,
   })  : _repository = repository,
-        _chatProvider = chatProvider;
+        _chatProvider = chatProvider,
+        _providerRepository = providerRepository;
 
   final SessionRepository _repository;
   final ChatProvider _chatProvider;
+  final ProviderRepository? _providerRepository;
   final Uuid _uuid = const Uuid();
 
   ChatSessionDocument? _currentDocument;
@@ -85,7 +103,8 @@ class ChatController {
     await _repository.saveDocument(_currentDocument!);
 
     try {
-      await _streamAssistantResponse();
+      await _streamAssistantResponse(
+          hasImageAttachments: attachments.isNotEmpty);
     } finally {
       _generationInProgress = false;
     }
@@ -149,13 +168,15 @@ class ChatController {
         updatedAt: now,
       );
       await _repository.saveDocument(_currentDocument!);
-      await _streamAssistantResponse();
+      await _streamAssistantResponse(hasImageAttachments: false);
     } finally {
       _generationInProgress = false;
     }
   }
 
-  Future<void> _streamAssistantResponse() async {
+  Future<void> _streamAssistantResponse({
+    required bool hasImageAttachments,
+  }) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
     final assistant = ChatMessage(
@@ -177,7 +198,11 @@ class ChatController {
     _streamingAssistantId = assistant.id;
 
     try {
-      final stream = _chatProvider.sendStream(_requestFor(_currentDocument!));
+      final request = await _requestFor(
+        _currentDocument!,
+        hasImageAttachments: hasImageAttachments,
+      );
+      final stream = _chatProvider.sendStream(request);
       final iterator = StreamIterator(stream);
       _streamIterator = iterator;
 
@@ -196,6 +221,10 @@ class ChatController {
           await iterator.cancel();
           return;
         }
+      }
+    } on _ChatRequestValidationException catch (error) {
+      if (_isCurrentGeneration(document.id, assistant.id)) {
+        await _markAssistantFailed(assistant.id, error.message);
       }
     } on Object {
       if (_isCurrentGeneration(document.id, assistant.id)) {
@@ -305,7 +334,23 @@ class ChatController {
       _streamingAssistantId == assistantId &&
       _currentDocument?.id == sessionId;
 
-  ChatRequest _requestFor(ChatSessionDocument document) {
+  Future<ChatRequest> _requestFor(
+    ChatSessionDocument document, {
+    required bool hasImageAttachments,
+  }) async {
+    final configured = await _configuredRequestParts(document);
+    if (configured != null) {
+      final (:provider, :model) = configured;
+      _validateRequest(provider, model, hasImageAttachments);
+      return ChatRequest(
+        provider: provider,
+        model: model,
+        systemPrompt: document.systemPrompt,
+        messages: document.messages,
+        stream: true,
+      );
+    }
+
     final now = DateTime.now().toUtc();
     return ChatRequest(
       provider: ProviderConfig(
@@ -329,6 +374,63 @@ class ChatController {
       stream: true,
     );
   }
+
+  Future<({ProviderConfig provider, ModelConfig model})?>
+      _configuredRequestParts(
+    ChatSessionDocument document,
+  ) async {
+    final repository = _providerRepository;
+    if (repository == null) {
+      return null;
+    }
+
+    final providers = await repository.listProviders();
+    final models = await repository.listModels();
+    ProviderConfig? provider;
+    for (final candidate in providers) {
+      if (candidate.id == document.providerId) {
+        provider = candidate;
+        break;
+      }
+    }
+    if (provider == null) {
+      throw StateError('Provider not found.');
+    }
+    ModelConfig? model;
+    for (final candidate in models) {
+      if (candidate.id == document.modelId) {
+        model = candidate;
+        break;
+      }
+    }
+    if (model == null) {
+      throw StateError('Model not found.');
+    }
+    return (provider: provider, model: model);
+  }
+
+  void _validateRequest(
+    ProviderConfig provider,
+    ModelConfig model,
+    bool hasImageAttachments,
+  ) {
+    if (provider.protocol != model.protocol) {
+      throw const _ChatRequestValidationException(
+        'Provider and model protocols differ.',
+      );
+    }
+    if (hasImageAttachments && !model.supportsImages) {
+      throw const _ChatRequestValidationException(
+        'The selected model does not support images.',
+      );
+    }
+  }
+}
+
+class _ChatRequestValidationException implements Exception {
+  const _ChatRequestValidationException(this.message);
+
+  final String message;
 }
 
 ChatSessionDocument _copyDocument(

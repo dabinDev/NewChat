@@ -7,6 +7,9 @@ import 'package:newchat/features/chat/application/session_list_controller.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
+import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/features/providers/data/provider_repository.dart';
+import 'package:newchat/features/providers/domain/provider_models.dart';
 
 void main() {
   test('sendMessage appends user message and streamed assistant text',
@@ -291,6 +294,95 @@ void main() {
     await events.close();
   });
 
+  test('protocol/model mismatch blocks chat send before provider call',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider([const ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'claude-3-5-sonnet-latest',
+          ),
+        ],
+        models: [
+          _model('claude-3-5-sonnet-latest', ProviderProtocol.claude),
+        ],
+      ),
+    );
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        providerId: 'provider-1',
+        modelId: 'claude-3-5-sonnet-latest',
+      ),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.sendMessage(text: 'hi', attachments: const []);
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.role, ChatRole.assistant);
+    expect(assistant.state, MessageState.failed);
+    expect(assistant.parts.single.text, 'Provider and model protocols differ.');
+    expect(fakeProvider.requests, isEmpty);
+  });
+
+  test('model without image support blocks image send before provider call',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider([const ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'text-only',
+          ),
+        ],
+        models: [
+          _model(
+            'text-only',
+            ProviderProtocol.openai,
+            supportsImages: false,
+          ),
+        ],
+      ),
+    );
+    await repository.saveDocument(
+      _document(
+          id: 'session-1', providerId: 'provider-1', modelId: 'text-only'),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.sendMessage(
+      text: 'describe this',
+      attachments: const [
+        AttachmentRef(
+          id: 'image-1',
+          localPath: '/tmp/image.png',
+          mimeType: 'image/png',
+        ),
+      ],
+    );
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.role, ChatRole.assistant);
+    expect(assistant.state, MessageState.failed);
+    expect(
+      assistant.parts.single.text,
+      'The selected model does not support images.',
+    );
+    expect(fakeProvider.requests, isEmpty);
+  });
+
   group('SessionListController', () {
     test('load reads repository metas', () async {
       final repository = InMemorySessionRepository();
@@ -331,9 +423,11 @@ class FakeChatProvider implements ChatProvider {
   FakeChatProvider(this.events);
 
   final List<ChatStreamEvent> events;
+  final requests = <ChatRequest>[];
 
   @override
   Stream<ChatStreamEvent> sendStream(ChatRequest request) async* {
+    requests.add(request);
     for (final event in events) {
       yield event;
     }
@@ -406,13 +500,15 @@ class SequentialChatProvider implements ChatProvider {
 ChatSessionDocument _document({
   required String id,
   String title = 'Title',
+  String providerId = 'provider-1',
+  String modelId = 'gpt-4o-mini',
 }) {
   final now = DateTime.utc(2026, 5, 30);
   return ChatSessionDocument(
     id: id,
     title: title,
-    providerId: 'provider-1',
-    modelId: 'gpt-4o-mini',
+    providerId: providerId,
+    modelId: modelId,
     systemPrompt: '',
     messages: [
       ChatMessage(
@@ -429,3 +525,33 @@ ChatSessionDocument _document({
     schemaVersion: 1,
   );
 }
+
+ProviderConfig _provider({
+  required String id,
+  required ProviderProtocol protocol,
+  required String defaultModelId,
+}) {
+  final now = DateTime.utc(2026);
+  return ProviderConfig(
+    id: id,
+    name: id,
+    protocol: protocol,
+    baseUrl: 'https://api.example.com',
+    defaultModelId: defaultModelId,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+ModelConfig _model(
+  String id,
+  ProviderProtocol protocol, {
+  bool supportsImages = true,
+}) =>
+    ModelConfig(
+      id: id,
+      displayName: id,
+      protocol: protocol,
+      supportsStreaming: true,
+      supportsImages: supportsImages,
+    );

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:newchat/core/routing/app_routes.dart';
+import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/presentation/widgets/chat_input_bar.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:newchat/features/demo/demo_data.dart';
+import 'package:newchat/features/providers/application/provider_controller.dart';
+import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({
     super.key,
     required this.sessionId,
@@ -18,13 +22,16 @@ class ChatScreen extends StatefulWidget {
   final ChatSessionDocument? demoSession;
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   late String _title;
   late String _providerId;
   late String _modelId;
+  ChatSessionDocument? _session;
+  bool _isLoading = false;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -33,15 +40,22 @@ class _ChatScreenState extends State<ChatScreen> {
     _title = session.title;
     _providerId = session.providerId;
     _modelId = session.modelId;
+    _session = session;
+    if (widget.demoSession == null && widget.sessionId != 'new') {
+      _loadSession();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final baseSession = widget.demoSession ?? demoChatSession;
-    final session = widget.sessionId == 'new'
-        ? baseSession
-        : baseSession.copyWith(id: widget.sessionId);
+    final models = ref.watch(modelListProvider).valueOrNull ?? const [];
+    final model = _firstModelWithId(models, _modelId);
+    final baseSession = _session ?? widget.demoSession ?? demoChatSession;
+    final session =
+        widget.sessionId == 'new' || _session?.id == widget.sessionId
+            ? baseSession
+            : baseSession.copyWith(id: widget.sessionId);
     final isStreaming = session.messages.any(
       (message) => message.state == MessageState.streaming,
     );
@@ -125,12 +139,81 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ChatInputBar(
-            supportsImages: true,
-            onSend: (_, __) {},
+            supportsImages: model?.supportsImages ?? true,
+            enabled: !_isLoading && !_isSending,
+            onSend: _sendMessage,
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _loadSession() async {
+    setState(() => _isLoading = true);
+    try {
+      final controller = ref.read(chatControllerProvider);
+      await controller.loadSession(widget.sessionId);
+      final session = controller.currentDocument!;
+      if (mounted) {
+        setState(() {
+          _session = session;
+          _title = session.title;
+          _providerId = session.providerId;
+          _modelId = session.modelId;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _sendMessage(
+    String text,
+    List<AttachmentRef> attachments,
+  ) async {
+    setState(() => _isSending = true);
+    try {
+      final controller = ref.read(chatControllerProvider);
+      if (widget.sessionId == 'new' && controller.currentDocument == null) {
+        await controller.createSession(
+          providerId: _providerId,
+          modelId: _modelId,
+          title: l10nTitle(text),
+        );
+      }
+      await controller.sendMessage(text: text, attachments: attachments);
+      if (mounted) {
+        setState(() {
+          _session = controller.currentDocument;
+          _title = _session?.title ?? _title;
+          _providerId = _session?.providerId ?? _providerId;
+          _modelId = _session?.modelId ?? _modelId;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  String l10nTitle(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return AppLocalizations.of(context).newChat;
+    }
+    return trimmed.length <= 40 ? trimmed : trimmed.substring(0, 40);
+  }
+
+  ModelConfig? _firstModelWithId(List<ModelConfig> models, String modelId) {
+    for (final model in models) {
+      if (model.id == modelId) {
+        return model;
+      }
+    }
+    return null;
   }
 
   Future<void> _handleAction(_ChatAction action) async {

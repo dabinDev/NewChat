@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/features/chat/presentation/chat_screen.dart';
 import 'package:newchat/features/chat/presentation/session_list_screen.dart';
@@ -35,9 +36,11 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: ChatScreen(
-          sessionId: session.id,
-          demoSession: session,
+        home: ProviderScope(
+          child: ChatScreen(
+            sessionId: session.id,
+            demoSession: session,
+          ),
         ),
       ),
     );
