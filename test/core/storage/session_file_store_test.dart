@@ -19,6 +19,16 @@ void main() {
       }
     });
 
+    test('rejects unsafe session ids on delete path', () {
+      for (final sessionId in ['', '..', '../x', 'x/y']) {
+        expect(
+          () => store.deleteSessionAttachments(sessionId),
+          throwsArgumentError,
+          reason: 'Expected "$sessionId" to be rejected.',
+        );
+      }
+    });
+
     test('rejects unsafe attachment ids', () {
       for (final attachmentId in ['', '..', '../x', 'x/y']) {
         expect(
@@ -57,6 +67,26 @@ void main() {
       expect(copy.readAsStringSync(), 'hello');
       expect(copy.path, contains('session-1_2.3'));
       expect(copy.path, contains('attachment-1_2.3'));
+    });
+
+    test('deletes a valid session attachment directory', () async {
+      final root = await Directory.systemTemp.createTemp('session_file_store_');
+      addTearDown(() async {
+        if (await root.exists()) {
+          await root.delete(recursive: true);
+        }
+      });
+      final store = SessionFileStore(
+        documentsDirectoryProvider: () async => root,
+      );
+
+      final directory = await store.attachmentsDirectory('session-1');
+      await File('${directory.path}${Platform.pathSeparator}attachment.txt')
+          .writeAsString('hello');
+
+      await store.deleteSessionAttachments('session-1');
+
+      expect(directory.existsSync(), isFalse);
     });
   });
 }

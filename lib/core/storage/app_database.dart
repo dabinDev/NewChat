@@ -21,6 +21,10 @@ class AppDatabase {
 
   Database? _database;
   Future<Database>? _opening;
+  int _lifecycleGeneration = 0;
+
+  static const _openCancelledMessage =
+      'Database open was cancelled by close(). Retry open().';
 
   Future<Database> open() async {
     final existing = _database;
@@ -33,14 +37,31 @@ class AppDatabase {
       return opening;
     }
 
-    final nextOpening = _openDatabase();
+    final nextOpening = _openGuarded();
     _opening = nextOpening;
     try {
-      _database = await nextOpening;
-      return _database!;
+      return await nextOpening;
     } finally {
       if (identical(_opening, nextOpening)) {
         _opening = null;
+      }
+    }
+  }
+
+  Future<Database> _openGuarded() async {
+    final openingGeneration = _lifecycleGeneration;
+    final database = await _openDatabase();
+    try {
+      if (openingGeneration != _lifecycleGeneration) {
+        // close() invalidated this open while it was in flight. Fail clearly so
+        // callers retry instead of receiving a handle already closed by close().
+        throw StateError(_openCancelledMessage);
+      }
+      _database = database;
+      return database;
+    } finally {
+      if (openingGeneration != _lifecycleGeneration) {
+        await database.close();
       }
     }
   }
@@ -86,9 +107,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 
   Future<void> close() async {
     final opening = _opening;
+    _lifecycleGeneration += 1;
     try {
       if (opening != null) {
-        await opening;
+        try {
+          await opening;
+        } on StateError catch (error) {
+          if (error.message != _openCancelledMessage) {
+            rethrow;
+          }
+        }
       }
       final existing = _database;
       if (existing != null) {

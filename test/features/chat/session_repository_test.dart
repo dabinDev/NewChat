@@ -63,7 +63,8 @@ void main() {
     expect(loaded, isNull);
   });
 
-  test('preview skips non-text error and image-only messages', () async {
+  test('preview skips error and image parts because their type is not text',
+      () async {
     final repository = InMemorySessionRepository();
     final document = _document(
       id: 'session-1',

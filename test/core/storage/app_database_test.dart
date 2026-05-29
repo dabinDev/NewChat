@@ -37,7 +37,8 @@ void main() {
     expect(openCount, 1);
   });
 
-  test('close waits for an in-flight open and clears cached state', () async {
+  test('open callers fail clearly when close is requested while opening',
+      () async {
     final completer = Completer<Database>();
     final firstDatabase = _MockDatabase();
     final secondDatabase = _MockDatabase();
@@ -59,11 +60,13 @@ void main() {
       },
     );
 
-    final opening = appDatabase.open();
+    final firstOpening = appDatabase.open();
+    final secondOpening = appDatabase.open();
     final closing = appDatabase.close();
     completer.complete(firstDatabase);
 
-    expect(await opening, same(firstDatabase));
+    await expectLater(firstOpening, throwsA(isA<StateError>()));
+    await expectLater(secondOpening, throwsA(isA<StateError>()));
     await closing;
     verify(firstDatabase.close).called(1);
 
