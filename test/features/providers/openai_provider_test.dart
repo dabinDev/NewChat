@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/core/errors/chat_error.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/providers/data/openai_provider.dart';
@@ -51,6 +53,68 @@ void main() {
 
     expect(messages, hasLength(1));
     expect((messages.single! as Map<String, Object?>)['role'], 'user');
+  });
+
+  test('buildOpenAiPayload includes only completed user and assistant history',
+      () {
+    final payload = buildOpenAiPayload(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: 'Be concise.',
+      messages: [
+        _message(
+          role: ChatRole.system,
+          parts: const [MessagePart.text('do not replay')],
+        ),
+        _message(
+          role: ChatRole.user,
+          state: MessageState.streaming,
+          parts: const [MessagePart.text('streaming user')],
+        ),
+        _message(
+          role: ChatRole.assistant,
+          state: MessageState.failed,
+          parts: const [MessagePart.text('failed assistant')],
+        ),
+        _message(
+          role: ChatRole.user,
+          state: MessageState.cancelled,
+          parts: const [MessagePart.text('cancelled user')],
+        ),
+        _message(
+          role: ChatRole.assistant,
+          state: MessageState.interrupted,
+          parts: const [MessagePart.text('interrupted assistant')],
+        ),
+        _message(
+          role: ChatRole.user,
+          parts: [
+            MessagePart(type: MessagePartType.info, text: 'unsupported'),
+          ],
+        ),
+        _message(
+          role: ChatRole.user,
+          parts: const [MessagePart.text('completed user')],
+        ),
+        _message(
+          role: ChatRole.assistant,
+          parts: const [MessagePart.text('completed assistant')],
+        ),
+      ],
+      stream: true,
+    );
+
+    final messages =
+        (payload['messages']! as List<Object?>).cast<Map<String, Object?>>();
+
+    expect(
+      messages,
+      [
+        {'role': 'system', 'content': 'Be concise.'},
+        {'role': 'user', 'content': 'completed user'},
+        {'role': 'assistant', 'content': 'completed assistant'},
+      ],
+    );
   });
 
   test('buildOpenAiPayload rejects image parts without byte resolver', () {
@@ -116,6 +180,64 @@ void main() {
     expect(image['type'], 'image_url');
     expect(url, 'data:image/png;base64,cG5nIGJ5dGVz');
     expect(url, isNot(contains('C:\\images\\cat.png')));
+  });
+
+  test(
+      'buildOpenAiPayloadWithImages includes only completed user and '
+      'assistant history', () async {
+    final payload = await buildOpenAiPayloadWithImages(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(
+          role: ChatRole.user,
+          state: MessageState.streaming,
+          parts: const [MessagePart.text('streaming user')],
+        ),
+        _message(
+          role: ChatRole.assistant,
+          state: MessageState.cancelled,
+          parts: const [MessagePart.text('cancelled assistant')],
+        ),
+        _message(
+          role: ChatRole.system,
+          parts: const [MessagePart.text('system history')],
+        ),
+        _message(
+          role: ChatRole.assistant,
+          parts: [
+            MessagePart(type: MessagePartType.reasoning, text: 'unsupported'),
+          ],
+        ),
+        _message(
+          role: ChatRole.user,
+          parts: [
+            const MessagePart.text('look'),
+            MessagePart.image(
+              const AttachmentRef(
+                id: 'a1',
+                localPath: 'C:\\images\\cat.png',
+                mimeType: 'image/png',
+              ),
+            ),
+          ],
+        ),
+      ],
+      stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('png bytes'),
+    );
+
+    final messages =
+        (payload['messages']! as List<Object?>).cast<Map<String, Object?>>();
+
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], isA<List<Object?>>());
+    expect(jsonEncode(payload), isNot(contains('streaming user')));
+    expect(jsonEncode(payload), isNot(contains('cancelled assistant')));
+    expect(jsonEncode(payload), isNot(contains('system history')));
+    expect(jsonEncode(payload), isNot(contains('unsupported')));
   });
 
   test('parses OpenAI text delta', () {
@@ -206,6 +328,43 @@ void main() {
     expect(adapter.lastOptions?.headers['Accept'], 'text/event-stream');
   });
 
+  test('OpenAIProvider buffers SSE frames split across chunks', () async {
+    final adapter = _FakeHttpClientAdapter(
+      streamChunks: [
+        Uint8List.fromList(utf8.encode('data: {"choices":[{"delta"')),
+        Uint8List.fromList(utf8.encode(':{"content":"split"}}]}\n')),
+        Uint8List.fromList(utf8.encode('\n')),
+        Uint8List.fromList(utf8.encode('data: [DONE]\n\n')),
+      ],
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('hello')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(events, hasLength(2));
+    expect((events.first as ChatStreamDelta).text, 'split');
+    expect(events.last, isA<ChatStreamDone>());
+  });
+
   test('OpenAIProvider converts Dio errors to ChatStreamFailed', () async {
     final dio = Dio()
       ..httpClientAdapter = _FakeHttpClientAdapter(
@@ -293,6 +452,50 @@ void main() {
     expect(url, 'data:image/png;base64,cG5nIGJ5dGVz');
     expect(jsonEncode(data), isNot(contains('C:\\images\\cat.png')));
   });
+
+  test('OpenAIProvider sanitizes generic image loader failures', () async {
+    const localPath = 'C:\\Users\\dabin\\Pictures\\secret.png';
+    final dio = Dio()..httpClientAdapter = _FakeHttpClientAdapter();
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+      loadAttachmentBytes: (_) async => throw const FileSystemException(
+        'Cannot open file',
+        localPath,
+      ),
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: [
+                  MessagePart.image(
+                    const AttachmentRef(
+                      id: 'a1',
+                      localPath: localPath,
+                      mimeType: 'image/png',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    final failure = events.single as ChatStreamFailed;
+
+    expect(failure.error.type, ChatErrorType.unknown);
+    expect(failure.error.message, isNot(contains(localPath)));
+    expect(failure.error.cause, isA<FileSystemException>());
+  });
 }
 
 ProviderConfig _provider() => ProviderConfig(
@@ -316,11 +519,12 @@ const _model = ModelConfig(
 ChatMessage _message({
   required ChatRole role,
   required List<MessagePart> parts,
+  MessageState state = MessageState.completed,
 }) =>
     ChatMessage(
       id: 'm1',
       role: role,
-      state: MessageState.completed,
+      state: state,
       parts: parts,
       createdAt: DateTime.utc(2026, 5, 30),
       updatedAt: DateTime.utc(2026, 5, 30),

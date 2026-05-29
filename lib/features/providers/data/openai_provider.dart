@@ -21,7 +21,6 @@ Map<String, Object?> buildOpenAiPayload({
 }) {
   _throwIfImagePartsRequireAsyncBuilder(messages);
   return _buildOpenAiPayload(
-    provider: provider,
     model: model,
     systemPrompt: systemPrompt,
     messages: messages,
@@ -48,13 +47,17 @@ Future<Map<String, Object?>> buildOpenAiPayloadWithImages({
     });
   }
 
-  for (final message in messages) {
+  for (final message in _openAiHistoryMessages(messages)) {
+    final content = await _openAiContentWithImagesOrNull(
+      message.parts,
+      loadAttachmentBytes: loadAttachmentBytes,
+    );
+    if (content == null) {
+      continue;
+    }
     openAiMessages.add({
       'role': _openAiRole(message.role),
-      'content': await _openAiContentWithImages(
-        message.parts,
-        loadAttachmentBytes: loadAttachmentBytes,
-      ),
+      'content': content,
     });
   }
 
@@ -66,12 +69,11 @@ Future<Map<String, Object?>> buildOpenAiPayloadWithImages({
 }
 
 Map<String, Object?> _buildOpenAiPayload({
-  required ProviderConfig provider,
   required ModelConfig model,
   required String systemPrompt,
   required List<ChatMessage> messages,
   required bool stream,
-  required Object Function(List<MessagePart> parts) buildContent,
+  required Object? Function(List<MessagePart> parts) buildContent,
 }) {
   final openAiMessages = <Map<String, Object?>>[];
   final trimmedSystemPrompt = systemPrompt.trim();
@@ -83,10 +85,14 @@ Map<String, Object?> _buildOpenAiPayload({
     });
   }
 
-  for (final message in messages) {
+  for (final message in _openAiHistoryMessages(messages)) {
+    final content = buildContent(message.parts);
+    if (content == null) {
+      continue;
+    }
     openAiMessages.add({
       'role': _openAiRole(message.role),
-      'content': buildContent(message.parts),
+      'content': content,
     });
   }
 
@@ -194,7 +200,7 @@ class OpenAIProvider implements ChatProvider {
       yield ChatStreamFailed(
         ChatError(
           type: ChatErrorType.parsing,
-          message: error.message,
+          message: 'Failed to parse OpenAI response.',
           cause: error,
         ),
       );
@@ -202,7 +208,7 @@ class OpenAIProvider implements ChatProvider {
       yield ChatStreamFailed(
         ChatError(
           type: ChatErrorType.unknown,
-          message: error.toString(),
+          message: 'OpenAI request failed.',
           cause: error,
         ),
       );
@@ -243,7 +249,7 @@ class OpenAIProvider implements ChatProvider {
       return ConnectionTestResult.failure(
         ChatError(
           type: ChatErrorType.unknown,
-          message: error.toString(),
+          message: 'OpenAI connection test failed.',
           cause: error,
         ),
       );
@@ -297,9 +303,12 @@ String _openAiRole(ChatRole role) {
   };
 }
 
-Object _openAiContent(List<MessagePart> parts) {
+Object? _openAiContent(List<MessagePart> parts) {
   final hasImages = parts.any((part) => part.type == MessagePartType.image);
   if (!hasImages) {
+    if (!parts.any((part) => part.type == MessagePartType.text)) {
+      return null;
+    }
     return parts
         .where((part) => part.type == MessagePartType.text)
         .map((part) => part.text ?? '')
@@ -312,7 +321,7 @@ Object _openAiContent(List<MessagePart> parts) {
   );
 }
 
-Future<Object> _openAiContentWithImages(
+Future<Object?> _openAiContentWithImages(
   List<MessagePart> parts, {
   required AttachmentBytesLoader loadAttachmentBytes,
 }) async {
@@ -348,12 +357,30 @@ Future<Object> _openAiContentWithImages(
   return content;
 }
 
+Future<Object?> _openAiContentWithImagesOrNull(
+  List<MessagePart> parts, {
+  required AttachmentBytesLoader loadAttachmentBytes,
+}) async {
+  final hasSupportedParts = parts.any(
+    (part) =>
+        part.type == MessagePartType.text || part.type == MessagePartType.image,
+  );
+  if (!hasSupportedParts) {
+    return null;
+  }
+
+  return _openAiContentWithImages(
+    parts,
+    loadAttachmentBytes: loadAttachmentBytes,
+  );
+}
+
 String _dataUrlForAttachment(AttachmentRef attachment, List<int> bytes) {
   return 'data:${attachment.mimeType};base64,${base64Encode(bytes)}';
 }
 
 void _throwIfImagePartsRequireAsyncBuilder(List<ChatMessage> messages) {
-  final hasImages = messages.any(
+  final hasImages = _openAiHistoryMessages(messages).any(
     (message) => message.parts.any(
       (part) => part.type == MessagePartType.image,
     ),
@@ -367,6 +394,13 @@ void _throwIfImagePartsRequireAsyncBuilder(List<ChatMessage> messages) {
     'attachment bytes can be encoded as data URLs.',
   );
 }
+
+Iterable<ChatMessage> _openAiHistoryMessages(List<ChatMessage> messages) =>
+    messages.where(
+      (message) =>
+          message.state == MessageState.completed &&
+          (message.role == ChatRole.user || message.role == ChatRole.assistant),
+    );
 
 List<String> _parseOpenAiSseEvents(List<SseEvent> events) {
   final deltas = <String>[];
