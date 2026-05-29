@@ -165,6 +165,40 @@ void main() {
     expect(result.message, contains('[masked]'));
     expect(result.message, contains('(401)'));
   });
+
+  test('testConnection masks stored API key leaked in provider error message',
+      () async {
+    const storedKey = 'sk-stored-secret-123456';
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [_model('gpt-4o-mini', ProviderProtocol.openai)],
+    );
+    final keyStore = FakeProviderKeyStore({'provider-1': storedKey});
+    final provider = RecordingChatProvider(
+      error: const ChatError(
+        type: ChatErrorType.authentication,
+        message: 'Authentication failed for sk-stored-secret-123456',
+        statusCode: 401,
+      ),
+    );
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: keyStore,
+      dio: Dio(),
+      openAiProviderFactory: (_, __) => provider,
+    );
+
+    final result = await controller.testConnection(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      apiKeyInput: '',
+    );
+
+    expect(result.isSuccess, isFalse);
+    expect(result.message, isNot(contains(storedKey)));
+    expect(result.message, contains('[masked]'));
+    expect(result.message, contains('(401)'));
+  });
 }
 
 class RecordingChatProvider implements ChatProvider {

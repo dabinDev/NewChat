@@ -132,9 +132,12 @@ class ProviderController {
       }
 
       final trimmedApiKey = apiKeyInput.trim();
+      final resolvedApiKey = trimmedApiKey.isNotEmpty
+          ? trimmedApiKey
+          : await _keyStore.readProviderKey(provider.id);
       final readApiKey = (String id) async {
-        if (id == provider.id && trimmedApiKey.isNotEmpty) {
-          return trimmedApiKey;
+        if (id == provider.id) {
+          return resolvedApiKey;
         }
         return _keyStore.readProviderKey(id);
       };
@@ -151,11 +154,14 @@ class ProviderController {
         );
       }
       return ProviderConnectionTestResult.failure(
-        _safeErrorMessage(result.error!, apiKeyInput),
+        _safeErrorMessage(
+          result.error!,
+          [trimmedApiKey, resolvedApiKey],
+        ),
       );
     } on Object catch (error) {
       return ProviderConnectionTestResult.failure(
-        _safeDiagnostic('Connection failed.', apiKeyInput, error),
+        _safeDiagnostic('Connection failed.', [apiKeyInput], error),
       );
     }
   }
@@ -207,27 +213,38 @@ class ProviderController {
     };
   }
 
-  String _safeErrorMessage(ChatError error, String apiKeyInput) {
-    final message = _maskKey(error.message, apiKeyInput);
+  String _safeErrorMessage(ChatError error, Iterable<String?> rawKeys) {
+    final message = _maskKeys(error.message, rawKeys);
     return error.statusCode == null
         ? message
         : '$message (${error.statusCode})';
   }
 
-  String _safeDiagnostic(String message, String apiKeyInput, Object error) {
-    final trimmed = apiKeyInput.trim();
-    if (trimmed.isEmpty) {
+  String _safeDiagnostic(
+    String message,
+    Iterable<String?> rawKeys,
+    Object error,
+  ) {
+    final keys = _normalizedKeys(rawKeys);
+    if (keys.isEmpty) {
       return message;
     }
-    return '$message API key: ${maskSecret(trimmed)}.';
+    return '$message API key: ${maskSecret(keys.first)}.';
   }
 
-  String _maskKey(String message, String apiKeyInput) {
-    final trimmed = apiKeyInput.trim();
-    if (trimmed.isEmpty) {
-      return message;
+  String _maskKeys(String message, Iterable<String?> rawKeys) {
+    var masked = message;
+    for (final key in _normalizedKeys(rawKeys)) {
+      masked = masked.replaceAll(key, '[masked]');
     }
-    return message.replaceAll(trimmed, '[masked]');
+    return masked;
+  }
+
+  Set<String> _normalizedKeys(Iterable<String?> rawKeys) {
+    return {
+      for (final key in rawKeys)
+        if (key != null && key.trim().isNotEmpty) key.trim(),
+    };
   }
 }
 
