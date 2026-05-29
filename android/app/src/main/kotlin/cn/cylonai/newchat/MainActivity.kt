@@ -1,4 +1,4 @@
-package com.example.newchat
+package cn.cylonai.newchat
 
 import io.flutter.embedding.android.FlutterActivity
 
