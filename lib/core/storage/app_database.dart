@@ -21,12 +21,18 @@ class AppDatabase {
 
   Database? _database;
   Future<Database>? _opening;
+  Future<void>? _closing;
   int _lifecycleGeneration = 0;
 
   static const _openCancelledMessage =
       'Database open was cancelled by close(). Retry open().';
 
   Future<Database> open() async {
+    final closing = _closing;
+    if (closing != null) {
+      await closing;
+    }
+
     final existing = _database;
     if (existing != null && existing.isOpen) {
       return existing;
@@ -108,6 +114,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   Future<void> close() async {
     final opening = _opening;
     _lifecycleGeneration += 1;
+    Future<void>? closing;
     try {
       if (opening != null) {
         try {
@@ -119,12 +126,18 @@ CREATE TABLE IF NOT EXISTS sessions (
         }
       }
       final existing = _database;
+      _database = null;
       if (existing != null) {
-        await existing.close();
+        closing = existing.close();
+        _closing = closing;
+        await closing;
       }
     } finally {
       _database = null;
       _opening = null;
+      if (identical(_closing, closing)) {
+        _closing = null;
+      }
     }
   }
 }

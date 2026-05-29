@@ -73,4 +73,42 @@ void main() {
     expect(await appDatabase.open(), same(secondDatabase));
     expect(openCount, 2);
   });
+
+  test('open waits for pending close and returns a fresh database', () async {
+    final closeCompleter = Completer<void>();
+    final firstDatabase = _MockDatabase();
+    final secondDatabase = _MockDatabase();
+    var openCount = 0;
+    when(() => firstDatabase.isOpen).thenReturn(true);
+    when(() => secondDatabase.isOpen).thenReturn(true);
+    when(firstDatabase.close).thenAnswer((_) => closeCompleter.future);
+    when(secondDatabase.close).thenAnswer((_) async {});
+
+    final appDatabase = AppDatabase(
+      databasesPathProvider: () async => '/tmp',
+      databaseOpener: (_,
+          {required onCreate, required onOpen, required version}) {
+        openCount += 1;
+        if (openCount == 1) {
+          return Future.value(firstDatabase);
+        }
+        return Future.value(secondDatabase);
+      },
+    );
+
+    expect(await appDatabase.open(), same(firstDatabase));
+
+    final closing = appDatabase.close();
+    await Future<void>.delayed(Duration.zero);
+    final opening = appDatabase.open();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(openCount, 1);
+    closeCompleter.complete();
+
+    expect(await opening, same(secondDatabase));
+    await expectLater(closing, completes);
+    expect(openCount, 2);
+    verify(firstDatabase.close).called(1);
+  });
 }
