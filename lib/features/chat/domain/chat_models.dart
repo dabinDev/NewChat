@@ -8,28 +8,34 @@ class ChatSessionMeta {
   const ChatSessionMeta({
     required this.id,
     required this.title,
+    required this.lastMessagePreview,
     required this.providerId,
     required this.modelId,
     required this.createdAt,
     required this.updatedAt,
+    required this.isDeleted,
     required this.schemaVersion,
   });
 
   final String id;
   final String title;
+  final String lastMessagePreview;
   final String providerId;
   final String modelId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isDeleted;
   final int schemaVersion;
 
   Map<String, Object?> toJson() => {
         'id': id,
         'title': title,
+        'lastMessagePreview': lastMessagePreview,
         'providerId': providerId,
         'modelId': modelId,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
+        'isDeleted': isDeleted,
         'schemaVersion': schemaVersion,
       };
 
@@ -37,10 +43,12 @@ class ChatSessionMeta {
       ChatSessionMeta(
         id: json['id']! as String,
         title: json['title']! as String,
+        lastMessagePreview: json['lastMessagePreview']! as String,
         providerId: json['providerId']! as String,
         modelId: json['modelId']! as String,
         createdAt: DateTime.parse(json['createdAt']! as String),
         updatedAt: DateTime.parse(json['updatedAt']! as String),
+        isDeleted: json['isDeleted']! as bool,
         schemaVersion: json['schemaVersion']! as int,
       );
 }
@@ -71,10 +79,16 @@ class ChatSessionDocument {
   ChatSessionMeta get meta => ChatSessionMeta(
         id: id,
         title: title,
+        lastMessagePreview: messages.reversed
+            .expand((message) => message.parts)
+            .where((part) => part.type == MessagePartType.text)
+            .map((part) => part.text ?? '')
+            .firstWhere((text) => text.isNotEmpty, orElse: () => ''),
         providerId: providerId,
         modelId: modelId,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        isDeleted: false,
         schemaVersion: schemaVersion,
       );
 

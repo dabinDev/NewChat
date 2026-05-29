@@ -1,10 +1,5 @@
 import 'package:newchat/features/chat/domain/chat_models.dart';
 
-final Expando<String> _lastMessagePreviews = Expando<String>(
-  'lastMessagePreview',
-);
-final Expando<bool> _deletedStates = Expando<bool>('isDeleted');
-
 abstract interface class SessionRepository {
   Future<List<ChatSessionMeta>> listMetas();
   Future<ChatSessionDocument?> loadDocument(String id);
@@ -44,20 +39,14 @@ class InMemorySessionRepository implements SessionRepository {
     final meta = ChatSessionMeta(
       id: document.id,
       title: document.title,
+      lastMessagePreview: preview,
       providerId: document.providerId,
       modelId: document.modelId,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
+      isDeleted: false,
       schemaVersion: document.schemaVersion,
     );
-    _lastMessagePreviews[meta] = preview;
-    _deletedStates[meta] = false;
     return meta;
   }
-}
-
-extension SessionRepositoryMetaFields on ChatSessionMeta {
-  String get lastMessagePreview => _lastMessagePreviews[this] ?? '';
-
-  bool get isDeleted => _deletedStates[this] ?? false;
 }

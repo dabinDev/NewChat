@@ -4,6 +4,37 @@ import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 
 void main() {
+  test('session meta round trips preview and deleted state', () {
+    final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
+    final meta = ChatSessionMeta(
+      id: 'session-1',
+      title: 'Hello',
+      lastMessagePreview: 'hello',
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      isDeleted: true,
+      schemaVersion: 1,
+    );
+
+    final json = meta.toJson();
+    final copy = ChatSessionMeta.fromJson(json);
+
+    expect(json['lastMessagePreview'], 'hello');
+    expect(json['isDeleted'], isTrue);
+    expect(copy.id, 'session-1');
+    expect(copy.title, 'Hello');
+    expect(copy.lastMessagePreview, 'hello');
+    expect(copy.providerId, 'provider-1');
+    expect(copy.modelId, 'gpt-4o-mini');
+    expect(copy.createdAt, createdAt);
+    expect(copy.updatedAt, updatedAt);
+    expect(copy.isDeleted, isTrue);
+    expect(copy.schemaVersion, 1);
+  });
+
   test('session document round trips message parts and attachments', () {
     final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
     final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
