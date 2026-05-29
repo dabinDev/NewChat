@@ -36,6 +36,10 @@ List<ModelConfig> seedModelConfigs() => const [
       ),
     ];
 
+bool isSeedModel(String modelId) {
+  return seedModelConfigs().any((model) => model.id == modelId);
+}
+
 abstract interface class ProviderRepository {
   Future<List<ProviderConfig>> listProviders();
   Future<List<ModelConfig>> listModels();

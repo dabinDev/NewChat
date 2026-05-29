@@ -328,6 +328,39 @@ void main() {
     expect(adapter.lastOptions?.headers['Accept'], 'text/event-stream');
   });
 
+  test('OpenAIProvider normalizes base URLs that already include v1', () async {
+    final adapter = _FakeHttpClientAdapter(
+      streamChunks: [Uint8List.fromList(utf8.encode('data: [DONE]\n\n'))],
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider().copyWithBaseUrl('https://api.openai.com/v1'),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('hello')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(
+      adapter.lastOptions?.path,
+      'https://api.openai.com/v1/chat/completions',
+    );
+  });
+
   test('OpenAIProvider buffers SSE frames split across chunks', () async {
     final adapter = _FakeHttpClientAdapter(
       streamChunks: [
@@ -507,6 +540,18 @@ ProviderConfig _provider() => ProviderConfig(
       createdAt: DateTime.utc(2026, 5, 30),
       updatedAt: DateTime.utc(2026, 5, 30),
     );
+
+extension on ProviderConfig {
+  ProviderConfig copyWithBaseUrl(String baseUrl) => ProviderConfig(
+        id: id,
+        name: name,
+        protocol: protocol,
+        baseUrl: baseUrl,
+        defaultModelId: defaultModelId,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
+}
 
 const _model = ModelConfig(
   id: 'gpt-4o-mini',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
+import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 
 class ModelManagerScreen extends ConsumerStatefulWidget {
@@ -91,21 +92,22 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
                           _deleteModel(model.id);
                       }
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
                         value: _ModelAction.edit,
                         child: ListTile(
                           leading: Icon(Icons.edit_outlined),
                           title: Text('Edit'),
                         ),
                       ),
-                      PopupMenuItem(
-                        value: _ModelAction.delete,
-                        child: ListTile(
-                          leading: Icon(Icons.delete_outline),
-                          title: Text('Delete'),
+                      if (!isSeedModel(model.id))
+                        const PopupMenuItem(
+                          value: _ModelAction.delete,
+                          child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Delete'),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],
@@ -202,6 +204,25 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
               labelText: 'Model ID',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<ProviderProtocol>(
+            segments: const [
+              ButtonSegment(
+                value: ProviderProtocol.openai,
+                label: Text('OpenAI'),
+              ),
+              ButtonSegment(
+                value: ProviderProtocol.claude,
+                label: Text('Claude'),
+              ),
+            ],
+            selected: {_model.protocol},
+            onSelectionChanged: (selection) {
+              setState(
+                () => _model = _model.copyWith(protocol: selection.single),
+              );
+            },
           ),
           CheckboxListTile(
             value: _model.supportsImages,

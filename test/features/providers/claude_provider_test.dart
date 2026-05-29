@@ -297,6 +297,41 @@ void main() {
     expect(adapter.lastOptions?.headers['Accept'], 'text/event-stream');
   });
 
+  test('ClaudeProvider normalizes base URLs that already include v1', () async {
+    final adapter = _FakeHttpClientAdapter(
+      streamChunks: [
+        Uint8List.fromList(
+          utf8.encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'),
+        ),
+      ],
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = ClaudeProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    await provider
+        .sendStream(
+          ChatRequest(
+            provider:
+                _provider().copyWithBaseUrl('https://api.anthropic.com/v1'),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('hello')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(adapter.lastOptions?.path, 'https://api.anthropic.com/v1/messages');
+  });
+
   test('provider-level split SSE chunks are buffered correctly', () async {
     final adapter = _FakeHttpClientAdapter(
       streamChunks: [
@@ -433,8 +468,10 @@ void main() {
         .toList();
 
     expect(events.single, isA<ChatStreamFailed>());
-    expect((events.single as ChatStreamFailed).error.type,
-        ChatErrorType.authentication);
+    expect(
+      (events.single as ChatStreamFailed).error.type,
+      ChatErrorType.authentication,
+    );
   });
 
   test('Dio error message is sanitized and raw error stays in cause', () async {
@@ -535,6 +572,18 @@ ProviderConfig _provider() => ProviderConfig(
       createdAt: DateTime.utc(2026, 5, 30),
       updatedAt: DateTime.utc(2026, 5, 30),
     );
+
+extension on ProviderConfig {
+  ProviderConfig copyWithBaseUrl(String baseUrl) => ProviderConfig(
+        id: id,
+        name: name,
+        protocol: protocol,
+        baseUrl: baseUrl,
+        defaultModelId: defaultModelId,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
+}
 
 const _model = ModelConfig(
   id: 'claude-3-5-sonnet-latest',

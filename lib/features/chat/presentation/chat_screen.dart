@@ -32,6 +32,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ChatSessionDocument? _session;
   bool _isLoading = false;
   bool _isSending = false;
+  bool _hasProvider = true;
 
   @override
   void initState() {
@@ -41,8 +42,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _providerId = session.providerId;
     _modelId = session.modelId;
     _session = session;
-    if (widget.demoSession == null && widget.sessionId != 'new') {
-      _loadSession();
+    if (widget.demoSession == null) {
+      if (widget.sessionId == 'new') {
+        _loadNewSessionDefaults();
+      } else {
+        _loadSession();
+      }
     }
   }
 
@@ -129,6 +134,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (!_hasProvider)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'Add a provider in Settings before starting a new chat.',
+                textAlign: TextAlign.center,
+              ),
+            ),
           if (isStreaming)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -140,7 +153,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ChatInputBar(
             supportsImages: model?.supportsImages ?? true,
-            enabled: !_isLoading && !_isSending,
+            enabled: !_isLoading && !_isSending && _hasProvider,
             onSend: _sendMessage,
           ),
         ],
@@ -169,6 +182,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _loadNewSessionDefaults() async {
+    setState(() => _isLoading = true);
+    try {
+      final providers =
+          await ref.read(providerControllerProvider).listProviders();
+      if (!mounted) {
+        return;
+      }
+      if (providers.isEmpty) {
+        setState(() {
+          _title = AppLocalizations.of(context).newChat;
+          _providerId = '';
+          _modelId = '';
+          _session = null;
+          _hasProvider = false;
+        });
+        return;
+      }
+      final provider = providers.first;
+      setState(() {
+        _title = AppLocalizations.of(context).newChat;
+        _providerId = provider.id;
+        _modelId = provider.defaultModelId;
+        _session = null;
+        _hasProvider = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   Future<void> _sendMessage(
     String text,
     List<AttachmentRef> attachments,
@@ -176,10 +222,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() => _isSending = true);
     try {
       final controller = ref.read(chatControllerProvider);
-      if (widget.sessionId == 'new' && controller.currentDocument == null) {
-        await controller.createSession(
-          providerId: _providerId,
-          modelId: _modelId,
+      if (widget.sessionId == 'new') {
+        await controller.createSessionFromDefaultProvider(
           title: l10nTitle(text),
         );
       }

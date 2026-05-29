@@ -2,12 +2,17 @@ abstract final class AppRoutes {
   static const home = '/';
   static const settings = '/settings';
   static const newProvider = '/settings/provider/new';
+  static const editProvider = '/settings/provider/:providerId';
   static const models = '/settings/models';
   static const chat = '/chat/:sessionId';
   static const systemPrompt = '/chat/:sessionId/system-prompt';
 
   static String chatPath(String sessionId) {
     return '/chat/${Uri.encodeComponent(sessionId)}';
+  }
+
+  static String editProviderPath(String providerId) {
+    return '/settings/provider/${Uri.encodeComponent(providerId)}';
   }
 
   static String systemPromptPath(String sessionId) {

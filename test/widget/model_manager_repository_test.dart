@@ -57,6 +57,59 @@ void main() {
 
     expect(repository.deletedModelIds, ['saved-model']);
   });
+
+  testWidgets('custom model protocol can be selected', (tester) async {
+    final repository = _RecordingProviderRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          providerRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: ModelManagerScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claude'));
+    await tester.pump();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Display name'),
+      'Claude Local',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Model ID'),
+      'claude-local',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(repository.savedModels.single.protocol, ProviderProtocol.claude);
+  });
+
+  testWidgets('seed models do not expose delete action', (tester) async {
+    final repository = _RecordingProviderRepository(
+      models: seedModelConfigs(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          providerRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: ModelManagerScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Model actions').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+  });
 }
 
 class _RecordingProviderRepository implements ProviderRepository {

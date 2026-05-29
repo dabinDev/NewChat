@@ -41,7 +41,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 '${provider.protocol.name.toUpperCase()} / ${provider.defaultModelId}',
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go(AppRoutes.newProvider),
+              onTap: () => context.go(AppRoutes.editProviderPath(provider.id)),
             ),
           ListTile(
             leading: const Icon(Icons.add_link_outlined),

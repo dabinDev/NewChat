@@ -33,6 +33,14 @@ class NewChatApp extends StatelessWidget {
         builder: (context, state) => const ProviderEditorScreen(),
       ),
       GoRoute(
+        path: AppRoutes.editProvider,
+        builder: (context, state) {
+          return ProviderEditorScreen(
+            providerId: state.pathParameters['providerId']!,
+          );
+        },
+      ),
+      GoRoute(
         path: AppRoutes.models,
         builder: (context, state) => const ModelManagerScreen(),
       ),

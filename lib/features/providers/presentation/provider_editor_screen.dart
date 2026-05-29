@@ -7,7 +7,12 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ProviderEditorScreen extends ConsumerStatefulWidget {
-  const ProviderEditorScreen({super.key});
+  const ProviderEditorScreen({
+    super.key,
+    this.providerId,
+  });
+
+  final String? providerId;
 
   @override
   ConsumerState<ProviderEditorScreen> createState() =>
@@ -24,6 +29,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   bool _obscureKey = true;
   bool _clearApiKey = false;
   String? _providerId;
+  DateTime? _createdAt;
   bool _isSaving = false;
   bool _isTesting = false;
 
@@ -32,10 +38,14 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     super.initState();
     _nameController = TextEditingController(text: 'Work gateway');
     _baseUrlController = TextEditingController(
-      text: 'https://api.openai.com/v1',
+      text: _defaultBaseUrlFor(_protocol),
     );
     _apiKeyController = TextEditingController();
     _defaultModel = _modelOptionsFor(_protocol).first;
+    _providerId = widget.providerId;
+    if (widget.providerId != null) {
+      _loadProvider(widget.providerId!);
+    }
   }
 
   @override
@@ -49,7 +59,9 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final modelOptions = _modelOptionsFor(_protocol);
+    final models = ref.watch(modelListProvider).valueOrNull;
+    final modelOptions = _modelOptionsFor(_protocol, models);
+    _ensureSelectedModel(modelOptions);
 
     return Scaffold(
       appBar: AppBar(
@@ -152,10 +164,31 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
 
   void _setProtocol(ProviderProtocol protocol) {
     _protocol = protocol;
-    final modelOptions = _modelOptionsFor(protocol);
-    if (!modelOptions.contains(_defaultModel)) {
-      _defaultModel = modelOptions.first;
+    _baseUrlController.text = _defaultBaseUrlFor(protocol);
+    _ensureSelectedModel(_modelOptionsFor(protocol));
+  }
+
+  Future<void> _loadProvider(String providerId) async {
+    final providers =
+        await ref.read(providerControllerProvider).listProviders();
+    ProviderConfig? provider;
+    for (final candidate in providers) {
+      if (candidate.id == providerId) {
+        provider = candidate;
+        break;
+      }
     }
+    if (provider == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _providerId = provider!.id;
+      _createdAt = provider.createdAt;
+      _nameController.text = provider.name;
+      _protocol = provider.protocol;
+      _baseUrlController.text = provider.baseUrl;
+      _defaultModel = provider.defaultModelId;
+    });
   }
 
   Future<void> _saveProvider() async {
@@ -188,20 +221,13 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     final provider = _providerFromFields();
     setState(() => _isTesting = true);
     try {
-      await ref.read(providerControllerProvider).saveProvider(
-            provider,
-            apiKeyInput: _apiKeyController.text,
-            clearApiKey: _clearApiKey,
-          );
-      ref.invalidate(modelListProvider);
-      final result = await ref.read(providerControllerProvider).testConnection(
-            providerId: provider.id,
-            modelId: provider.defaultModelId,
-            apiKeyInput: _apiKeyController.text,
-          );
-      ref.invalidate(providerListProvider);
+      final result =
+          await ref.read(providerControllerProvider).testConnectionWithConfig(
+                provider: provider,
+                modelId: provider.defaultModelId,
+                apiKeyInput: _apiKeyController.text,
+              );
       if (mounted) {
-        setState(() => _providerId = provider.id);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result.message)),
         );
@@ -223,14 +249,41 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
       protocol: _protocol,
       baseUrl: _baseUrlController.text.trim(),
       defaultModelId: _defaultModel,
-      createdAt: now,
+      createdAt: _createdAt ?? now,
       updatedAt: now,
     );
   }
 
-  List<String> _modelOptionsFor(ProviderProtocol protocol) {
+  List<String> _modelOptionsFor(
+    ProviderProtocol protocol, [
+    List<ModelConfig>? models,
+  ]) {
+    final configuredModels = models;
+    if (configuredModels != null && configuredModels.isNotEmpty) {
+      final ids = [
+        for (final model in configuredModels)
+          if (model.protocol == protocol) model.id,
+      ];
+      if (ids.isNotEmpty) {
+        return ids;
+      }
+    }
     return protocol == ProviderProtocol.openai
         ? const ['gpt-4o-mini', 'gpt-4o']
         : const ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'];
+  }
+
+  void _ensureSelectedModel(List<String> modelOptions) {
+    if (modelOptions.contains(_defaultModel)) {
+      return;
+    }
+    _defaultModel = modelOptions.first;
+  }
+
+  String _defaultBaseUrlFor(ProviderProtocol protocol) {
+    return switch (protocol) {
+      ProviderProtocol.openai => 'https://api.openai.com',
+      ProviderProtocol.claude => 'https://api.anthropic.com',
+    };
   }
 }

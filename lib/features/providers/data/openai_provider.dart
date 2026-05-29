@@ -440,10 +440,25 @@ List<String> _parseOpenAiSseEvents(List<SseEvent> events) {
 }
 
 Uri _chatCompletionsUri(ProviderConfig provider) {
-  final baseUrl = provider.baseUrl.endsWith('/')
-      ? provider.baseUrl.substring(0, provider.baseUrl.length - 1)
-      : provider.baseUrl;
-  return Uri.parse('$baseUrl/v1/chat/completions');
+  return _endpointUri(provider.baseUrl, '/v1/chat/completions');
+}
+
+Uri _endpointUri(String rawBaseUrl, String endpointPath) {
+  final baseUri = Uri.parse(rawBaseUrl.trim());
+  final baseSegments =
+      baseUri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  final endpointSegments =
+      endpointPath.split('/').where((segment) => segment.isNotEmpty).toList();
+  if (baseSegments.isNotEmpty &&
+      endpointSegments.isNotEmpty &&
+      baseSegments.last == endpointSegments.first) {
+    baseSegments.removeLast();
+  }
+  return baseUri.replace(
+    pathSegments: [...baseSegments, ...endpointSegments],
+    query: null,
+    fragment: null,
+  );
 }
 
 ChatError _chatErrorFromDio(DioException error) {

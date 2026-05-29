@@ -66,6 +66,25 @@ class ChatController {
     await _repository.saveDocument(document);
   }
 
+  Future<void> createSessionFromDefaultProvider({
+    required String title,
+  }) async {
+    final repository = _providerRepository;
+    if (repository == null) {
+      throw StateError('Provider repository is not configured.');
+    }
+    final providers = await repository.listProviders();
+    if (providers.isEmpty) {
+      throw StateError('Provider not found.');
+    }
+    final provider = providers.first;
+    await createSession(
+      providerId: provider.id,
+      modelId: provider.defaultModelId,
+      title: title,
+    );
+  }
+
   Future<void> loadSession(String sessionId) async {
     _throwIfGenerationActive();
     final document = await _repository.loadDocument(sessionId);
@@ -104,7 +123,8 @@ class ChatController {
 
     try {
       await _streamAssistantResponse(
-          hasImageAttachments: attachments.isNotEmpty);
+        hasImageAttachments: attachments.isNotEmpty,
+      );
     } finally {
       _generationInProgress = false;
     }
@@ -260,7 +280,9 @@ class ChatController {
   }
 
   Future<void> _appendAssistantPart(
-      String assistantId, MessagePart part) async {
+    String assistantId,
+    MessagePart part,
+  ) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
     _currentDocument = _replaceMessage(

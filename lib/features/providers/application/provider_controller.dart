@@ -106,6 +106,30 @@ class ProviderController {
     }
   }
 
+  Future<ProviderConnectionTestResult> testConnectionWithConfig({
+    required ProviderConfig provider,
+    required String modelId,
+    required String apiKeyInput,
+  }) async {
+    try {
+      final model = await _findModel(modelId);
+      final validationError = await _validateConnectionFields(
+        provider: provider,
+        model: model,
+        apiKeyInput: apiKeyInput,
+      );
+      if (validationError != null) {
+        return ProviderConnectionTestResult.failure(validationError);
+      }
+
+      return _testConnection(provider, model, apiKeyInput);
+    } on Object catch (error) {
+      return ProviderConnectionTestResult.failure(
+        _safeDiagnostic('Connection failed.', [apiKeyInput], error),
+      );
+    }
+  }
+
   Future<void> deleteProvider(String providerId) async {
     await _repository.deleteProvider(providerId);
     await _keyStore.deleteProviderKey(providerId);
@@ -131,39 +155,48 @@ class ProviderController {
         return ProviderConnectionTestResult.failure(validationError);
       }
 
-      final trimmedApiKey = apiKeyInput.trim();
-      final resolvedApiKey = trimmedApiKey.isNotEmpty
-          ? trimmedApiKey
-          : await _keyStore.readProviderKey(provider.id);
-      final readApiKey = (String id) async {
-        if (id == provider.id) {
-          return resolvedApiKey;
-        }
-        return _keyStore.readProviderKey(id);
-      };
-      final result = await _chatProviderFor(
-        provider.protocol,
-        readApiKey,
-      ).testConnection(
-        ConnectionTestRequest(provider: provider, model: model),
-      );
-
-      if (result.isSuccess) {
-        return const ProviderConnectionTestResult.success(
-          'Connection succeeded.',
-        );
-      }
-      return ProviderConnectionTestResult.failure(
-        _safeErrorMessage(
-          result.error!,
-          [trimmedApiKey, resolvedApiKey],
-        ),
-      );
+      return _testConnection(provider, model, apiKeyInput);
     } on Object catch (error) {
       return ProviderConnectionTestResult.failure(
         _safeDiagnostic('Connection failed.', [apiKeyInput], error),
       );
     }
+  }
+
+  Future<ProviderConnectionTestResult> _testConnection(
+    ProviderConfig provider,
+    ModelConfig model,
+    String apiKeyInput,
+  ) async {
+    final trimmedApiKey = apiKeyInput.trim();
+    final resolvedApiKey = trimmedApiKey.isNotEmpty
+        ? trimmedApiKey
+        : await _keyStore.readProviderKey(provider.id);
+    Future<String?> readApiKey(String id) async {
+      if (id == provider.id) {
+        return resolvedApiKey;
+      }
+      return _keyStore.readProviderKey(id);
+    }
+
+    final result = await _chatProviderFor(
+      provider.protocol,
+      readApiKey,
+    ).testConnection(
+      ConnectionTestRequest(provider: provider, model: model),
+    );
+
+    if (result.isSuccess) {
+      return const ProviderConnectionTestResult.success(
+        'Connection succeeded.',
+      );
+    }
+    return ProviderConnectionTestResult.failure(
+      _safeErrorMessage(
+        result.error!,
+        [trimmedApiKey, resolvedApiKey],
+      ),
+    );
   }
 
   Future<ProviderConfig> _findProvider(String providerId) async {

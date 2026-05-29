@@ -213,6 +213,54 @@ void main() {
     await events.close();
   });
 
+  test('createSessionFromDefaultProvider replaces stale current document',
+      () async {
+    final repository = InMemorySessionRepository();
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const [ChatStreamDone()]),
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'real-provider',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'real-model',
+          ),
+        ],
+        models: [_model('real-model', ProviderProtocol.openai)],
+      ),
+    );
+    await controller.createSession(
+      providerId: 'old-provider',
+      modelId: 'old-model',
+      title: 'Old',
+    );
+    final oldSessionId = controller.currentDocument!.id;
+
+    await controller.createSessionFromDefaultProvider(title: 'New');
+
+    expect(controller.currentDocument!.id, isNot(oldSessionId));
+    expect(controller.currentDocument!.providerId, 'real-provider');
+    expect(controller.currentDocument!.modelId, 'real-model');
+  });
+
+  test('createSessionFromDefaultProvider throws when no provider exists',
+      () async {
+    final controller = ChatController(
+      repository: InMemorySessionRepository(),
+      chatProvider: FakeChatProvider(const []),
+      providerRepository: InMemoryProviderRepository(
+        providers: const [],
+        models: const [],
+      ),
+    );
+
+    await expectLater(
+      controller.createSessionFromDefaultProvider(title: 'New'),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('sendStream setup throw marks assistant failed with error part',
       () async {
     final controller = ChatController(
@@ -358,7 +406,10 @@ void main() {
     );
     await repository.saveDocument(
       _document(
-          id: 'session-1', providerId: 'provider-1', modelId: 'text-only'),
+        id: 'session-1',
+        providerId: 'provider-1',
+        modelId: 'text-only',
+      ),
     );
 
     await controller.loadSession('session-1');
