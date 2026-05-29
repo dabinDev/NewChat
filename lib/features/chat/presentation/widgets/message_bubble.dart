@@ -139,7 +139,7 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
     final className = element.attributes['class'] ?? '';
     final language = className.replaceFirst('language-', '');
     final code = element.textContent;
-    if (language.isEmpty || code.trim().isEmpty) {
+    if (code.trim().isEmpty) {
       return Text(code, style: preferredStyle);
     }
 
@@ -153,16 +153,27 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
               constraints: BoxConstraints(maxWidth: constraints.maxWidth),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: HighlightView(
-                  code,
-                  language: language,
-                  theme: githubTheme,
-                  padding: const EdgeInsets.all(12),
-                  textStyle: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                  ),
-                ),
+                child: language.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SelectableText(
+                          code,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                          ),
+                        ),
+                      )
+                    : HighlightView(
+                        code,
+                        language: language,
+                        theme: githubTheme,
+                        padding: const EdgeInsets.all(12),
+                        textStyle: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                        ),
+                      ),
               ),
             );
           },
