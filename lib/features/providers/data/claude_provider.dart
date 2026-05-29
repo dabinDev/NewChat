@@ -133,6 +133,11 @@ class ClaudeProvider implements ChatProvider {
       var sawStop = false;
       await for (final chunk in utf8.decoder.bind(body.stream)) {
         for (final event in parser.addChunk(chunk)) {
+          final streamError = _chatErrorFromClaudeSseError(event);
+          if (streamError != null) {
+            yield ChatStreamFailed(streamError);
+            return;
+          }
           for (final text in _parseClaudeSseEvents([event])) {
             yield ChatStreamDelta(text);
           }
@@ -144,6 +149,11 @@ class ClaudeProvider implements ChatProvider {
       }
 
       for (final event in parser.close()) {
+        final streamError = _chatErrorFromClaudeSseError(event);
+        if (streamError != null) {
+          yield ChatStreamFailed(streamError);
+          return;
+        }
         for (final text in _parseClaudeSseEvents([event])) {
           yield ChatStreamDelta(text);
         }
@@ -321,9 +331,13 @@ Object? _claudeContent(List<MessagePart> parts) {
     if (part.type != MessagePartType.text) {
       continue;
     }
+    final text = part.text?.trim();
+    if (text == null || text.isEmpty) {
+      continue;
+    }
     content.add({
       'type': 'text',
-      'text': part.text ?? '',
+      'text': text,
     });
   }
 
@@ -342,9 +356,13 @@ Future<Object?> _claudeContentWithImages(
   for (final part in parts) {
     switch (part.type) {
       case MessagePartType.text:
+        final text = part.text?.trim();
+        if (text == null || text.isEmpty) {
+          continue;
+        }
         content.add({
           'type': 'text',
-          'text': part.text ?? '',
+          'text': text,
         });
       case MessagePartType.image:
         final attachment = part.attachment!;
@@ -441,6 +459,28 @@ List<String> _parseClaudeSseEvents(List<SseEvent> events) {
   return deltas;
 }
 
+ChatError? _chatErrorFromClaudeSseError(SseEvent event) {
+  if (event.event != 'error') {
+    return null;
+  }
+
+  Object? cause = event.data;
+  try {
+    final decoded = jsonDecode(event.data.trim());
+    if (decoded is Map<String, Object?>) {
+      cause = decoded;
+    }
+  } on FormatException {
+    // Keep the raw event data as the cause without exposing it to users.
+  }
+
+  return ChatError(
+    type: ChatErrorType.unknown,
+    message: 'Claude stream failed.',
+    cause: cause,
+  );
+}
+
 bool _isClaudeStopEvent(SseEvent event) {
   if (event.event == 'message_stop') {
     return true;
@@ -463,12 +503,26 @@ Uri _messagesUri(ProviderConfig provider) {
 
 ChatError _chatErrorFromDio(DioException error) {
   final statusCode = error.response?.statusCode;
+  final type = _chatErrorTypeFromDio(error);
   return ChatError(
-    type: _chatErrorTypeFromDio(error),
-    message: error.message ?? 'Claude request failed.',
+    type: type,
+    message: _safeClaudeDioMessage(type),
     statusCode: statusCode,
     cause: error,
   );
+}
+
+String _safeClaudeDioMessage(ChatErrorType type) {
+  return switch (type) {
+    ChatErrorType.authentication => 'Claude authentication failed.',
+    ChatErrorType.permission => 'Claude request was not permitted.',
+    ChatErrorType.notFound => 'Claude endpoint was not found.',
+    ChatErrorType.badRequest => 'Claude request was invalid.',
+    ChatErrorType.timeout => 'Claude request timed out.',
+    ChatErrorType.network => 'Claude network connection failed.',
+    ChatErrorType.cancelled => 'Claude request was cancelled.',
+    ChatErrorType.parsing || ChatErrorType.unknown => 'Claude request failed.',
+  };
 }
 
 ChatErrorType _chatErrorTypeFromDio(DioException error) {

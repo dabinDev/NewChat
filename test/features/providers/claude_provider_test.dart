@@ -51,6 +51,39 @@ void main() {
     expect(payload['model'], 'claude-3-5-sonnet-latest');
     expect(payload['system'], 'Be concise.');
     expect(payload['stream'], isTrue);
+    expect(payload['messages'], [
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': 'hello'},
+        ],
+      },
+    ]);
+  });
+
+  test('trims text content and skips messages with empty content', () {
+    final payload = buildClaudePayload(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(role: ChatRole.user, parts: const [MessagePart.text('  ')]),
+        _message(
+          role: ChatRole.assistant,
+          parts: const [MessagePart.text('  answer  ')],
+        ),
+      ],
+      stream: false,
+    );
+
+    expect(payload['messages'], [
+      {
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': 'answer'},
+        ],
+      },
+    ]);
   });
 
   test('blank system prompt is omitted', () {
@@ -306,6 +339,64 @@ void main() {
     expect(events.last, isA<ChatStreamDone>());
   });
 
+  test('provider-level Claude SSE error event fails and stops stream',
+      () async {
+    final adapter = _FakeHttpClientAdapter(
+      streamChunks: [
+        Uint8List.fromList(
+          utf8.encode(
+            'event: content_block_delta\n'
+            'data: {"delta":{"type":"text_delta","text":"before"}}\n\n',
+          ),
+        ),
+        Uint8List.fromList(
+          utf8.encode(
+            'event: error\n'
+            'data: {"type":"error","error":{"type":"overloaded_error",'
+            '"message":"server is overloaded"}}\n\n',
+          ),
+        ),
+        Uint8List.fromList(
+          utf8.encode(
+            'event: content_block_delta\n'
+            'data: {"delta":{"type":"text_delta","text":"after"}}\n\n'
+            'event: message_stop\n'
+            'data: {"type":"message_stop"}\n\n',
+          ),
+        ),
+      ],
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = ClaudeProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('hello')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(events, hasLength(2));
+    expect((events.first as ChatStreamDelta).text, 'before');
+    final failure = events.last as ChatStreamFailed;
+    expect(failure.error.type, ChatErrorType.unknown);
+    expect(failure.error.message, 'Claude stream failed.');
+    expect(failure.error.cause, isA<Map<String, Object?>>());
+  });
+
   test('Dio errors are converted to ChatStreamFailed', () async {
     final dio = Dio()
       ..httpClientAdapter = _FakeHttpClientAdapter(
@@ -344,6 +435,48 @@ void main() {
     expect(events.single, isA<ChatStreamFailed>());
     expect((events.single as ChatStreamFailed).error.type,
         ChatErrorType.authentication);
+  });
+
+  test('Dio error message is sanitized and raw error stays in cause', () async {
+    const leakedKey = 'sk-ant-api03-secret';
+    const leakedPath = 'C:\\Users\\dabin\\secret\\request.json';
+    final dio = Dio()
+      ..httpClientAdapter = _FakeHttpClientAdapter(
+        error: DioException(
+          requestOptions: RequestOptions(path: '/v1/messages'),
+          type: DioExceptionType.connectionError,
+          message: 'Failed with $leakedKey while reading $leakedPath',
+        ),
+      );
+    final provider = ClaudeProvider(
+      dio: dio,
+      readApiKey: (_) async => leakedKey,
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('hello')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    final failure = events.single as ChatStreamFailed;
+
+    expect(failure.error.type, ChatErrorType.network);
+    expect(failure.error.message, 'Claude network connection failed.');
+    expect(failure.error.message, isNot(contains(leakedKey)));
+    expect(failure.error.message, isNot(contains(leakedPath)));
+    expect(failure.error.cause, isA<DioException>());
   });
 
   test('non-Dio image loader failure message is sanitized', () async {
