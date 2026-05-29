@@ -6,7 +6,7 @@ import 'package:newchat/features/chat/presentation/widgets/chat_input_bar.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class ChatScreen extends StatelessWidget {
+class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.sessionId,
@@ -48,20 +48,37 @@ class ChatScreen extends StatelessWidget {
   );
 
   @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  late String _title;
+  late String _providerId;
+  late String _modelId;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = ChatScreen._demoSession.title;
+    _providerId = ChatScreen._demoSession.providerId;
+    _modelId = ChatScreen._demoSession.modelId;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final session = sessionId == 'new'
-        ? _demoSession
+    final session = widget.sessionId == 'new'
+        ? ChatScreen._demoSession
         : ChatSessionDocument(
-            id: sessionId,
-            title: _demoSession.title,
-            providerId: _demoSession.providerId,
-            modelId: _demoSession.modelId,
-            systemPrompt: _demoSession.systemPrompt,
-            messages: _demoSession.messages,
-            createdAt: _demoSession.createdAt,
-            updatedAt: _demoSession.updatedAt,
-            schemaVersion: _demoSession.schemaVersion,
+            id: widget.sessionId,
+            title: ChatScreen._demoSession.title,
+            providerId: ChatScreen._demoSession.providerId,
+            modelId: ChatScreen._demoSession.modelId,
+            systemPrompt: ChatScreen._demoSession.systemPrompt,
+            messages: ChatScreen._demoSession.messages,
+            createdAt: ChatScreen._demoSession.createdAt,
+            updatedAt: ChatScreen._demoSession.updatedAt,
+            schemaVersion: ChatScreen._demoSession.schemaVersion,
           );
     final isStreaming = session.messages.any(
       (message) => message.state == MessageState.streaming,
@@ -72,9 +89,9 @@ class ChatScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(session.title.isEmpty ? l10n.newChat : session.title),
+            Text(_title.isEmpty ? l10n.newChat : _title),
             Text(
-              '${session.providerId} / ${session.modelId}',
+              '$_providerId / $_modelId',
               style: Theme.of(context).textTheme.labelMedium,
             ),
           ],
@@ -111,11 +128,7 @@ class ChatScreen extends StatelessWidget {
                 ),
               ),
             ],
-            onSelected: (action) {
-              if (action == _ChatAction.systemPrompt) {
-                context.go(AppRoutes.systemPromptPath(sessionId));
-              }
-            },
+            onSelected: _handleAction,
           ),
         ],
       ),
@@ -145,6 +158,113 @@ class ChatScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _handleAction(_ChatAction action) async {
+    switch (action) {
+      case _ChatAction.rename:
+        await _showRenameDialog();
+      case _ChatAction.systemPrompt:
+        if (mounted) {
+          context.go(AppRoutes.systemPromptPath(widget.sessionId));
+        }
+      case _ChatAction.switchModel:
+        await _showSwitchModelSheet();
+      case _ChatAction.delete:
+        await _showDeleteDialog();
+    }
+  }
+
+  Future<void> _showRenameDialog() async {
+    final controller = TextEditingController(text: _title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename chat'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (newTitle != null && newTitle.isNotEmpty && mounted) {
+      setState(() => _title = newTitle);
+    }
+  }
+
+  Future<void> _showSwitchModelSheet() async {
+    final selectedModel = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('GPT-4o mini'),
+              subtitle: const Text('Demo OpenAI'),
+              selected: _modelId == 'GPT-4o mini',
+              onTap: () => Navigator.of(context).pop('GPT-4o mini'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.psychology_outlined),
+              title: const Text('Claude 3.5 Sonnet'),
+              subtitle: const Text('Demo Claude'),
+              selected: _modelId == 'Claude 3.5 Sonnet',
+              onTap: () => Navigator.of(context).pop('Claude 3.5 Sonnet'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedModel != null && mounted) {
+      setState(() {
+        _modelId = selectedModel;
+        _providerId =
+            selectedModel.startsWith('Claude') ? 'Demo Claude' : 'Demo OpenAI';
+      });
+    }
+  }
+
+  Future<void> _showDeleteDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete chat?'),
+        content: const Text('This demo chat will be marked deleted locally.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat deleted locally')),
+      );
+    }
   }
 }
 

@@ -4,8 +4,13 @@ import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class SessionListScreen extends StatelessWidget {
-  const SessionListScreen({super.key});
+class SessionListScreen extends StatefulWidget {
+  const SessionListScreen({
+    super.key,
+    this.initialHasProvider = false,
+  });
+
+  final bool initialHasProvider;
 
   static final List<ChatSessionMeta> _sessions = [
     ChatSessionMeta(
@@ -21,7 +26,18 @@ class SessionListScreen extends StatelessWidget {
     ),
   ];
 
-  static const bool _hasProvider = false;
+  @override
+  State<SessionListScreen> createState() => _SessionListScreenState();
+}
+
+class _SessionListScreenState extends State<SessionListScreen> {
+  late bool _hasProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasProvider = widget.initialHasProvider;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,29 +54,57 @@ class SessionListScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: _hasProvider
-          ? ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _sessions.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final session = _sessions[index];
-                return Card(
-                  margin: EdgeInsets.zero,
-                  child: ListTile(
-                    leading: const Icon(Icons.chat_bubble_outline),
-                    title: Text(session.title),
-                    subtitle: Text(session.lastMessagePreview),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.go(AppRoutes.chatPath(session.id)),
-                  ),
-                );
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  icon: Icon(Icons.hub_outlined),
+                  label: Text('Setup'),
+                ),
+                ButtonSegment(
+                  value: true,
+                  icon: Icon(Icons.forum_outlined),
+                  label: Text('Demo sessions'),
+                ),
+              ],
+              selected: {_hasProvider},
+              onSelectionChanged: (selection) {
+                setState(() => _hasProvider = selection.single);
               },
-            )
-          : _EmptyProviderState(
-              message: l10n.providerRequired,
-              onOpenSettings: () => context.go(AppRoutes.settings),
             ),
+          ),
+          Expanded(
+            child: _hasProvider
+                ? ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: SessionListScreen._sessions.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final session = SessionListScreen._sessions[index];
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          leading: const Icon(Icons.chat_bubble_outline),
+                          title: Text(session.title),
+                          subtitle: Text(session.lastMessagePreview),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () =>
+                              context.go(AppRoutes.chatPath(session.id)),
+                        ),
+                      );
+                    },
+                  )
+                : _EmptyProviderState(
+                    message: l10n.providerRequired,
+                    onOpenSettings: () => context.go(AppRoutes.settings),
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.chatPath('new')),
         icon: const Icon(Icons.add_comment_outlined),

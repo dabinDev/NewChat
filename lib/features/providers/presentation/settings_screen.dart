@@ -5,9 +5,14 @@ import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
   static final List<ProviderConfig> _providers = [
     ProviderConfig(
       id: 'demo-openai',
@@ -19,6 +24,8 @@ class SettingsScreen extends StatelessWidget {
       updatedAt: DateTime(2026, 1, 1),
     ),
   ];
+
+  String _selectedLanguage = 'system';
 
   @override
   Widget build(BuildContext context) {
@@ -62,24 +69,31 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           RadioListTile<String>(
             value: 'system',
-            groupValue: 'system',
-            onChanged: (_) {},
+            groupValue: _selectedLanguage,
+            onChanged: _selectLanguage,
             title: const Text('System language'),
           ),
           RadioListTile<String>(
             value: 'zh',
-            groupValue: 'system',
-            onChanged: (_) {},
+            groupValue: _selectedLanguage,
+            onChanged: _selectLanguage,
             title: const Text('Chinese'),
           ),
           RadioListTile<String>(
             value: 'en',
-            groupValue: 'system',
-            onChanged: (_) {},
+            groupValue: _selectedLanguage,
+            onChanged: _selectLanguage,
             title: const Text('English'),
           ),
         ],
       ),
     );
+  }
+
+  void _selectLanguage(String? value) {
+    if (value == null) {
+      return;
+    }
+    setState(() => _selectedLanguage = value);
   }
 }

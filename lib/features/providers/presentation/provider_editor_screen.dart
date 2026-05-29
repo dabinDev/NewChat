@@ -11,9 +11,32 @@ class ProviderEditorScreen extends StatefulWidget {
 }
 
 class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _baseUrlController;
+  late final TextEditingController _apiKeyController;
   ProviderProtocol _protocol = ProviderProtocol.openai;
   String _defaultModel = 'gpt-4o-mini';
   bool _obscureKey = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: 'Work gateway');
+    _baseUrlController = TextEditingController(
+      text: 'https://api.openai.com/v1',
+    );
+    _apiKeyController = TextEditingController(
+      text: maskSecret('sk-demo12345678'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +56,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
-            controller: TextEditingController(text: 'Work gateway'),
+            controller: _nameController,
             decoration: const InputDecoration(
               labelText: 'Provider name',
               border: OutlineInputBorder(),
@@ -58,8 +81,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
           ),
           const SizedBox(height: 16),
           TextField(
-            controller:
-                TextEditingController(text: 'https://api.openai.com/v1'),
+            controller: _baseUrlController,
             decoration: const InputDecoration(
               labelText: 'Base URL',
               border: OutlineInputBorder(),
@@ -67,8 +89,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
           ),
           const SizedBox(height: 16),
           TextField(
-            controller:
-                TextEditingController(text: maskSecret('sk-demo12345678')),
+            controller: _apiKeyController,
             obscureText: _obscureKey,
             decoration: InputDecoration(
               labelText: 'API key',
