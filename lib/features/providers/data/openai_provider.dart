@@ -1,0 +1,348 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:newchat/core/errors/chat_error.dart';
+import 'package:newchat/core/network/sse_parser.dart';
+import 'package:newchat/features/chat/domain/chat_models.dart';
+import 'package:newchat/features/chat/domain/chat_provider.dart';
+import 'package:newchat/features/providers/domain/provider_models.dart';
+
+Map<String, Object?> buildOpenAiPayload({
+  required ProviderConfig provider,
+  required ModelConfig model,
+  required String systemPrompt,
+  required List<ChatMessage> messages,
+  required bool stream,
+}) {
+  final openAiMessages = <Map<String, Object?>>[];
+  final trimmedSystemPrompt = systemPrompt.trim();
+
+  if (trimmedSystemPrompt.isNotEmpty) {
+    openAiMessages.add({
+      'role': 'system',
+      'content': trimmedSystemPrompt,
+    });
+  }
+
+  for (final message in messages) {
+    openAiMessages.add({
+      'role': _openAiRole(message.role),
+      'content': _openAiContent(message.parts),
+    });
+  }
+
+  return {
+    'model': model.id,
+    'messages': openAiMessages,
+    'stream': stream,
+  };
+}
+
+List<String> parseOpenAiSse(String chunk) {
+  final events = parseSseChunk(chunk);
+  return _parseOpenAiSseEvents(events);
+}
+
+class OpenAIProvider implements ChatProvider {
+  OpenAIProvider({
+    required Dio dio,
+    required Future<String?> Function(String providerId) readApiKey,
+  })  : _dio = dio,
+        _readApiKey = readApiKey;
+
+  final Dio _dio;
+  final Future<String?> Function(String providerId) _readApiKey;
+
+  @override
+  Stream<ChatStreamEvent> sendStream(ChatRequest request) async* {
+    try {
+      final apiKey = await _readApiKey(request.provider.id);
+      if (apiKey == null || apiKey.trim().isEmpty) {
+        yield const ChatStreamFailed(
+          ChatError(
+            type: ChatErrorType.authentication,
+            message: 'API key is missing.',
+          ),
+        );
+        return;
+      }
+
+      final response = await _dio.postUri<Object?>(
+        _chatCompletionsUri(request.provider),
+        data: buildOpenAiPayload(
+          provider: request.provider,
+          model: request.model,
+          systemPrompt: request.systemPrompt,
+          messages: request.messages,
+          stream: request.stream,
+        ),
+        options: Options(
+          responseType:
+              request.stream ? ResponseType.stream : ResponseType.json,
+          headers: {
+            'Authorization': 'Bearer ${apiKey.trim()}',
+            if (request.stream) 'Accept': 'text/event-stream',
+          },
+        ),
+      );
+
+      if (!request.stream) {
+        yield* _emitNonStreamingResponse(response.data);
+        return;
+      }
+
+      final body = response.data;
+      if (body is! ResponseBody) {
+        yield const ChatStreamFailed(
+          ChatError(
+            type: ChatErrorType.parsing,
+            message: 'Expected streaming response body.',
+          ),
+        );
+        return;
+      }
+
+      final parser = SseParser();
+      await for (final chunk in utf8.decoder.bind(body.stream)) {
+        for (final event in parser.addChunk(chunk)) {
+          if (event.data.trim() == '[DONE]') {
+            yield const ChatStreamDone();
+            continue;
+          }
+          for (final text in _parseOpenAiSseEvents([event])) {
+            yield ChatStreamDelta(text);
+          }
+        }
+      }
+
+      for (final event in parser.close()) {
+        if (event.data.trim() == '[DONE]') {
+          yield const ChatStreamDone();
+          continue;
+        }
+        for (final text in _parseOpenAiSseEvents([event])) {
+          yield ChatStreamDelta(text);
+        }
+      }
+    } on DioException catch (error) {
+      yield ChatStreamFailed(_chatErrorFromDio(error));
+    } on FormatException catch (error) {
+      yield ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.parsing,
+          message: error.message,
+          cause: error,
+        ),
+      );
+    } on Object catch (error) {
+      yield ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.unknown,
+          message: error.toString(),
+          cause: error,
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<ConnectionTestResult> testConnection(
+    ConnectionTestRequest request,
+  ) async {
+    try {
+      final events = sendStream(
+        ChatRequest(
+          provider: request.provider,
+          model: request.model,
+          systemPrompt: '',
+          messages: [
+            ChatMessage(
+              id: 'connection-test',
+              role: ChatRole.user,
+              state: MessageState.completed,
+              parts: const [MessagePart.text('ping')],
+              createdAt: DateTime.now().toUtc(),
+              updatedAt: DateTime.now().toUtc(),
+            ),
+          ],
+          stream: false,
+        ),
+      );
+
+      await for (final event in events) {
+        if (event is ChatStreamFailed) {
+          return ConnectionTestResult.failure(event.error);
+        }
+      }
+      return const ConnectionTestResult.success();
+    } on Object catch (error) {
+      return ConnectionTestResult.failure(
+        ChatError(
+          type: ChatErrorType.unknown,
+          message: error.toString(),
+          cause: error,
+        ),
+      );
+    }
+  }
+
+  Stream<ChatStreamEvent> _emitNonStreamingResponse(Object? data) async* {
+    if (data is! Map<String, Object?>) {
+      yield const ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.parsing,
+          message: 'Expected JSON object response.',
+        ),
+      );
+      return;
+    }
+
+    final choices = data['choices'];
+    if (choices is! List) {
+      yield const ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.parsing,
+          message: 'Expected choices array in response.',
+        ),
+      );
+      return;
+    }
+
+    for (final choice in choices) {
+      if (choice is! Map) {
+        continue;
+      }
+      final message = choice['message'];
+      if (message is! Map) {
+        continue;
+      }
+      final content = message['content'];
+      if (content is String && content.isNotEmpty) {
+        yield ChatStreamDelta(content);
+      }
+    }
+    yield const ChatStreamDone();
+  }
+}
+
+String _openAiRole(ChatRole role) {
+  return switch (role) {
+    ChatRole.user => 'user',
+    ChatRole.assistant => 'assistant',
+    ChatRole.system => 'system',
+  };
+}
+
+Object _openAiContent(List<MessagePart> parts) {
+  final hasImages = parts.any((part) => part.type == MessagePartType.image);
+  if (!hasImages) {
+    return parts
+        .where((part) => part.type == MessagePartType.text)
+        .map((part) => part.text ?? '')
+        .join();
+  }
+
+  return parts
+      .map<Map<String, Object?>?>((part) {
+        return switch (part.type) {
+          MessagePartType.text => {
+              'type': 'text',
+              'text': part.text ?? '',
+            },
+          MessagePartType.image => {
+              'type': 'image_url',
+              'image_url': {
+                'url': part.attachment!.localPath,
+              },
+            },
+          MessagePartType.reasoning ||
+          MessagePartType.info ||
+          MessagePartType.error =>
+            null,
+        };
+      })
+      .whereType<Map<String, Object?>>()
+      .toList();
+}
+
+List<String> _parseOpenAiSseEvents(List<SseEvent> events) {
+  final deltas = <String>[];
+
+  for (final event in events) {
+    final data = event.data.trim();
+    if (data == '[DONE]') {
+      continue;
+    }
+
+    final decoded = jsonDecode(data);
+    if (decoded is! Map<String, Object?>) {
+      throw const FormatException('Expected OpenAI SSE JSON object.');
+    }
+
+    final choices = decoded['choices'];
+    if (choices is! List) {
+      continue;
+    }
+
+    for (final choice in choices) {
+      if (choice is! Map) {
+        continue;
+      }
+      final delta = choice['delta'];
+      if (delta is! Map) {
+        continue;
+      }
+      final content = delta['content'];
+      if (content is String && content.isNotEmpty) {
+        deltas.add(content);
+      }
+    }
+  }
+
+  return deltas;
+}
+
+Uri _chatCompletionsUri(ProviderConfig provider) {
+  final baseUrl = provider.baseUrl.endsWith('/')
+      ? provider.baseUrl.substring(0, provider.baseUrl.length - 1)
+      : provider.baseUrl;
+  return Uri.parse('$baseUrl/v1/chat/completions');
+}
+
+ChatError _chatErrorFromDio(DioException error) {
+  final statusCode = error.response?.statusCode;
+  return ChatError(
+    type: _chatErrorTypeFromDio(error),
+    message: error.message ?? 'OpenAI request failed.',
+    statusCode: statusCode,
+    cause: error,
+  );
+}
+
+ChatErrorType _chatErrorTypeFromDio(DioException error) {
+  final statusCode = error.response?.statusCode;
+  if (statusCode == 401) {
+    return ChatErrorType.authentication;
+  }
+  if (statusCode == 403) {
+    return ChatErrorType.permission;
+  }
+  if (statusCode == 404) {
+    return ChatErrorType.notFound;
+  }
+  if (statusCode != null && statusCode >= 400 && statusCode < 500) {
+    return ChatErrorType.badRequest;
+  }
+  return switch (error.type) {
+    DioExceptionType.connectionTimeout ||
+    DioExceptionType.sendTimeout ||
+    DioExceptionType.receiveTimeout =>
+      ChatErrorType.timeout,
+    DioExceptionType.cancel => ChatErrorType.cancelled,
+    DioExceptionType.connectionError => ChatErrorType.network,
+    DioExceptionType.badResponse ||
+    DioExceptionType.badCertificate ||
+    DioExceptionType.unknown =>
+      ChatErrorType.unknown,
+  };
+}
