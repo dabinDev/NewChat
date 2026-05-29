@@ -35,28 +35,57 @@ class _ModelManagerScreenState extends State<ModelManagerScreen> {
             margin: EdgeInsets.zero,
             child: ListTile(
               leading: const Icon(Icons.memory_outlined),
-              title: Text(model.name),
-              subtitle: Text(model.id),
-              trailing: Wrap(
-                spacing: 4,
-                children: [
-                  Checkbox(
-                    value: model.supportsImages,
-                    onChanged: (value) {
-                      setState(() => model.supportsImages = value ?? false);
-                    },
-                  ),
-                  IconButton(
-                    tooltip: 'Edit',
-                    onPressed: () => _showModelSheet(model),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete',
-                    onPressed: () => setState(() => _models.removeAt(index)),
-                    icon: const Icon(Icons.delete_outline),
-                  ),
-                ],
+              title: Text(
+                model.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                model.id,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: SizedBox(
+                width: 96,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: model.supportsImages,
+                      onChanged: (value) {
+                        setState(() => model.supportsImages = value ?? false);
+                      },
+                    ),
+                    PopupMenuButton<_ModelAction>(
+                      tooltip: 'Model actions',
+                      onSelected: (action) {
+                        switch (action) {
+                          case _ModelAction.edit:
+                            _showModelSheet(model);
+                          case _ModelAction.delete:
+                            setState(() => _models.removeAt(index));
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _ModelAction.edit,
+                          child: ListTile(
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Edit'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: _ModelAction.delete,
+                          child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Delete'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -155,3 +184,5 @@ class _EditableModel {
   String name;
   bool supportsImages;
 }
+
+enum _ModelAction { edit, delete }

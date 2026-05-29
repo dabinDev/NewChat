@@ -15,7 +15,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
   late final TextEditingController _baseUrlController;
   late final TextEditingController _apiKeyController;
   ProviderProtocol _protocol = ProviderProtocol.openai;
-  String _defaultModel = 'gpt-4o-mini';
+  late String _defaultModel;
   bool _obscureKey = true;
 
   @override
@@ -28,6 +28,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
     _apiKeyController = TextEditingController(
       text: maskSecret('sk-demo12345678'),
     );
+    _defaultModel = _modelOptionsFor(_protocol).first;
   }
 
   @override
@@ -41,12 +42,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final modelOptions = _protocol == ProviderProtocol.openai
-        ? const ['gpt-4o-mini', 'gpt-4o']
-        : const ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'];
-    if (!modelOptions.contains(_defaultModel)) {
-      _defaultModel = modelOptions.first;
-    }
+    final modelOptions = _modelOptionsFor(_protocol);
 
     return Scaffold(
       appBar: AppBar(
@@ -76,7 +72,7 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
             ],
             selected: {_protocol},
             onSelectionChanged: (selection) {
-              setState(() => _protocol = selection.single);
+              setState(() => _setProtocol(selection.single));
             },
           ),
           const SizedBox(height: 16),
@@ -135,5 +131,19 @@ class _ProviderEditorScreenState extends State<ProviderEditorScreen> {
         ],
       ),
     );
+  }
+
+  void _setProtocol(ProviderProtocol protocol) {
+    _protocol = protocol;
+    final modelOptions = _modelOptionsFor(protocol);
+    if (!modelOptions.contains(_defaultModel)) {
+      _defaultModel = modelOptions.first;
+    }
+  }
+
+  List<String> _modelOptionsFor(ProviderProtocol protocol) {
+    return protocol == ProviderProtocol.openai
+        ? const ['gpt-4o-mini', 'gpt-4o']
+        : const ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'];
   }
 }

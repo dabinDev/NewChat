@@ -147,15 +147,25 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: HighlightView(
-          code,
-          language: language,
-          theme: githubTheme,
-          padding: const EdgeInsets.all(12),
-          textStyle: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 13,
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: HighlightView(
+                  code,
+                  language: language,
+                  theme: githubTheme,
+                  padding: const EdgeInsets.all(12),
+                  textStyle: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

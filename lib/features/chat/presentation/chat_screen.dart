@@ -4,48 +4,18 @@ import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/presentation/widgets/chat_input_bar.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
+import 'package:newchat/features/demo/demo_data.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.sessionId,
+    this.demoSession,
   });
 
   final String sessionId;
-
-  static final ChatSessionDocument _demoSession = ChatSessionDocument(
-    id: 'demo-session',
-    title: 'Planning notes',
-    providerId: 'Demo OpenAI',
-    modelId: 'GPT-4o mini',
-    systemPrompt: 'Be concise and practical.',
-    messages: [
-      ChatMessage(
-        id: 'm1',
-        role: ChatRole.user,
-        state: MessageState.completed,
-        parts: const [MessagePart.text('Draft a concise rollout checklist.')],
-        createdAt: DateTime(2026, 1, 1, 9),
-        updatedAt: DateTime(2026, 1, 1, 9),
-      ),
-      ChatMessage(
-        id: 'm2',
-        role: ChatRole.assistant,
-        state: MessageState.completed,
-        parts: const [
-          MessagePart.text(
-            '- Confirm provider settings\n- Test streaming\n- Verify fallback errors\n\n```dart\nfinal ready = true;\n```',
-          ),
-        ],
-        createdAt: DateTime(2026, 1, 1, 9, 1),
-        updatedAt: DateTime(2026, 1, 1, 9, 1),
-      ),
-    ],
-    createdAt: DateTime(2026, 1, 1, 9),
-    updatedAt: DateTime(2026, 1, 1, 9, 1),
-    schemaVersion: 1,
-  );
+  final ChatSessionDocument? demoSession;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -59,42 +29,45 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _title = ChatScreen._demoSession.title;
-    _providerId = ChatScreen._demoSession.providerId;
-    _modelId = ChatScreen._demoSession.modelId;
+    final session = widget.demoSession ?? demoChatSession;
+    _title = session.title;
+    _providerId = session.providerId;
+    _modelId = session.modelId;
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final baseSession = widget.demoSession ?? demoChatSession;
     final session = widget.sessionId == 'new'
-        ? ChatScreen._demoSession
-        : ChatSessionDocument(
-            id: widget.sessionId,
-            title: ChatScreen._demoSession.title,
-            providerId: ChatScreen._demoSession.providerId,
-            modelId: ChatScreen._demoSession.modelId,
-            systemPrompt: ChatScreen._demoSession.systemPrompt,
-            messages: ChatScreen._demoSession.messages,
-            createdAt: ChatScreen._demoSession.createdAt,
-            updatedAt: ChatScreen._demoSession.updatedAt,
-            schemaVersion: ChatScreen._demoSession.schemaVersion,
-          );
+        ? baseSession
+        : baseSession.copyWith(id: widget.sessionId);
     final isStreaming = session.messages.any(
       (message) => message.state == MessageState.streaming,
     );
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_title.isEmpty ? l10n.newChat : _title),
-            Text(
-              '$_providerId / $_modelId',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ],
+        toolbarHeight: 64,
+        title: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _title.isEmpty ? l10n.newChat : _title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                '$_providerId / $_modelId',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+            ],
+          ),
         ),
         actions: [
           PopupMenuButton<_ChatAction>(

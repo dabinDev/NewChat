@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:newchat/core/routing/app_routes.dart';
-import 'package:newchat/features/chat/domain/chat_models.dart';
+import 'package:newchat/features/demo/demo_data.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class SessionListScreen extends StatefulWidget {
@@ -11,20 +11,6 @@ class SessionListScreen extends StatefulWidget {
   });
 
   final bool initialHasProvider;
-
-  static final List<ChatSessionMeta> _sessions = [
-    ChatSessionMeta(
-      id: 'demo-session',
-      title: 'Planning notes',
-      lastMessagePreview: 'Summarize the rollout checklist.',
-      providerId: 'demo-openai',
-      modelId: 'gpt-4o-mini',
-      createdAt: DateTime(2026, 1, 1, 9),
-      updatedAt: DateTime(2026, 1, 1, 9, 30),
-      isDeleted: false,
-      schemaVersion: 1,
-    ),
-  ];
 
   @override
   State<SessionListScreen> createState() => _SessionListScreenState();
@@ -81,16 +67,24 @@ class _SessionListScreenState extends State<SessionListScreen> {
             child: _hasProvider
                 ? ListView.separated(
                     padding: const EdgeInsets.all(12),
-                    itemCount: SessionListScreen._sessions.length,
+                    itemCount: demoSessionMetas.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
-                      final session = SessionListScreen._sessions[index];
+                      final session = demoSessionMetas[index];
                       return Card(
                         margin: EdgeInsets.zero,
                         child: ListTile(
                           leading: const Icon(Icons.chat_bubble_outline),
-                          title: Text(session.title),
-                          subtitle: Text(session.lastMessagePreview),
+                          title: Text(
+                            session.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            session.lastMessagePreview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () =>
                               context.go(AppRoutes.chatPath(session.id)),
