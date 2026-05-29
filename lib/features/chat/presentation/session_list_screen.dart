@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class SessionListScreen extends StatelessWidget {
@@ -16,7 +17,7 @@ class SessionListScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: l10n.settings,
-            onPressed: () => context.go('/settings'),
+            onPressed: () => context.go(AppRoutes.settings),
           ),
         ],
       ),
@@ -24,7 +25,7 @@ class SessionListScreen extends StatelessWidget {
         child: Text(l10n.providerRequired),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/chat/new'),
+        onPressed: () => context.go(AppRoutes.chatPath('new')),
         icon: const Icon(Icons.add_comment_outlined),
         label: Text(l10n.newChat),
       ),

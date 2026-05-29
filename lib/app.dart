@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/presentation/chat_screen.dart';
 import 'package:newchat/features/chat/presentation/session_list_screen.dart';
 import 'package:newchat/features/providers/presentation/model_manager_screen.dart';
@@ -14,29 +15,29 @@ class NewChatApp extends StatelessWidget {
   static final GoRouter _router = GoRouter(
     routes: [
       GoRoute(
-        path: '/',
+        path: AppRoutes.home,
         builder: (context, state) => const SessionListScreen(),
       ),
       GoRoute(
-        path: '/chat/:sessionId',
+        path: AppRoutes.chat,
         builder: (context, state) {
           return ChatScreen(sessionId: state.pathParameters['sessionId']!);
         },
       ),
       GoRoute(
-        path: '/settings',
+        path: AppRoutes.settings,
         builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
-        path: '/settings/provider/new',
+        path: AppRoutes.newProvider,
         builder: (context, state) => const ProviderEditorScreen(),
       ),
       GoRoute(
-        path: '/settings/models',
+        path: AppRoutes.models,
         builder: (context, state) => const ModelManagerScreen(),
       ),
       GoRoute(
-        path: '/chat/:sessionId/system-prompt',
+        path: AppRoutes.systemPrompt,
         builder: (context, state) {
           return SystemPromptScreen(
             sessionId: state.pathParameters['sessionId']!,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ChatScreen extends StatelessWidget {
@@ -21,7 +22,7 @@ class ChatScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.tune_outlined),
             tooltip: 'System prompt',
-            onPressed: () => context.go('/chat/$sessionId/system-prompt'),
+            onPressed: () => context.go(AppRoutes.systemPromptPath(sessionId)),
           ),
         ],
       ),

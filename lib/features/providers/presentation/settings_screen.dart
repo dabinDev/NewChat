@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -18,12 +19,12 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.add_link_outlined),
             title: Text(l10n.testConnection),
-            onTap: () => context.go('/settings/provider/new'),
+            onTap: () => context.go(AppRoutes.newProvider),
           ),
           ListTile(
             leading: const Icon(Icons.memory_outlined),
             title: const Text('Models'),
-            onTap: () => context.go('/settings/models'),
+            onTap: () => context.go(AppRoutes.models),
           ),
         ],
       ),
