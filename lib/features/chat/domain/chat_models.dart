@@ -46,17 +46,17 @@ class ChatSessionMeta {
 }
 
 class ChatSessionDocument {
-  const ChatSessionDocument({
+  ChatSessionDocument({
     required this.id,
     required this.title,
     required this.providerId,
     required this.modelId,
     required this.systemPrompt,
-    required this.messages,
+    required List<ChatMessage> messages,
     required this.createdAt,
     required this.updatedAt,
     required this.schemaVersion,
-  });
+  }) : messages = List.unmodifiable(messages);
 
   final String id;
   final String title;
@@ -108,14 +108,14 @@ class ChatSessionDocument {
 }
 
 class ChatMessage {
-  const ChatMessage({
+  ChatMessage({
     required this.id,
     required this.role,
     required this.state,
-    required this.parts,
+    required List<MessagePart> parts,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : parts = List.unmodifiable(parts);
 
   final String id;
   final ChatRole role;
@@ -125,7 +125,7 @@ class ChatMessage {
   final DateTime updatedAt;
 
   String get fullText => parts
-      .where((part) => part.text != null)
+      .where((part) => part.type == MessagePartType.text)
       .map((part) => part.text!)
       .join();
 
@@ -152,29 +152,39 @@ class ChatMessage {
 }
 
 class MessagePart {
-  const MessagePart({
+  factory MessagePart({
+    required MessagePartType type,
+    String? text,
+    AttachmentRef? attachment,
+  }) {
+    _validatePayload(type: type, text: text, attachment: attachment);
+    return MessagePart._(
+      type: type,
+      text: text,
+      attachment: attachment,
+    );
+  }
+
+  const MessagePart._({
     required this.type,
     this.text,
     this.attachment,
   });
 
   const MessagePart.text(String text)
-      : this(
-          type: MessagePartType.text,
-          text: text,
-        );
+      : type = MessagePartType.text,
+        text = text,
+        attachment = null;
 
   const MessagePart.error(String text)
-      : this(
-          type: MessagePartType.error,
-          text: text,
-        );
+      : type = MessagePartType.error,
+        text = text,
+        attachment = null;
 
   MessagePart.image(AttachmentRef attachment)
-      : this(
-          type: MessagePartType.image,
-          attachment: attachment,
-        );
+      : type = MessagePartType.image,
+        text = null,
+        attachment = attachment;
 
   final MessagePartType type;
   final String? text;
@@ -186,15 +196,50 @@ class MessagePart {
         'attachment': attachment?.toJson(),
       };
 
-  factory MessagePart.fromJson(Map<String, Object?> json) => MessagePart(
+  factory MessagePart.fromJson(Map<String, Object?> json) {
+    try {
+      final attachmentJson = json['attachment'];
+      return MessagePart(
         type: MessagePartType.values.byName(json['type']! as String),
         text: json['text'] as String?,
-        attachment: json['attachment'] == null
+        attachment: attachmentJson == null
             ? null
             : AttachmentRef.fromJson(
-                json['attachment']! as Map<String, Object?>,
+                attachmentJson as Map<String, Object?>,
               ),
       );
+    } on Object catch (error) {
+      throw FormatException('Invalid message part payload: $error');
+    }
+  }
+
+  static void _validatePayload({
+    required MessagePartType type,
+    required String? text,
+    required AttachmentRef? attachment,
+  }) {
+    switch (type) {
+      case MessagePartType.text:
+      case MessagePartType.reasoning:
+      case MessagePartType.info:
+      case MessagePartType.error:
+        if (text == null || attachment != null) {
+          throw ArgumentError.value(
+            type,
+            'type',
+            'Text-based message parts require text and no attachment.',
+          );
+        }
+      case MessagePartType.image:
+        if (text != null || attachment == null) {
+          throw ArgumentError.value(
+            type,
+            'type',
+            'Image message parts require an attachment and no text.',
+          );
+        }
+    }
+  }
 }
 
 class AttachmentRef {
