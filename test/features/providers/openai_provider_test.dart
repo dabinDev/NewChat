@@ -53,8 +53,36 @@ void main() {
     expect((messages.single! as Map<String, Object?>)['role'], 'user');
   });
 
-  test('builds OpenAI content array for messages with images', () {
-    final payload = buildOpenAiPayload(
+  test('buildOpenAiPayload rejects image parts without byte resolver', () {
+    expect(
+      () => buildOpenAiPayload(
+        provider: _provider(),
+        model: _model,
+        systemPrompt: '',
+        messages: [
+          _message(
+            role: ChatRole.user,
+            parts: [
+              const MessagePart.text('what is this?'),
+              MessagePart.image(
+                const AttachmentRef(
+                  id: 'a1',
+                  localPath: 'C:\\images\\cat.png',
+                  mimeType: 'image/png',
+                ),
+              ),
+            ],
+          ),
+        ],
+        stream: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('buildOpenAiPayloadWithImages encodes image parts as data URLs',
+      () async {
+    final payload = await buildOpenAiPayloadWithImages(
       provider: _provider(),
       model: _model,
       systemPrompt: '',
@@ -74,17 +102,20 @@ void main() {
         ),
       ],
       stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('png bytes'),
     );
 
     final messages = payload['messages']! as List<Object?>;
     final message = messages.single! as Map<String, Object?>;
     final content = message['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final imageUrl = image['image_url']! as Map<String, Object?>;
+    final url = imageUrl['url']! as String;
 
     expect(content.first, {'type': 'text', 'text': 'what is this?'});
-    expect(content.last, {
-      'type': 'image_url',
-      'image_url': {'url': 'C:\\images\\cat.png'},
-    });
+    expect(image['type'], 'image_url');
+    expect(url, 'data:image/png;base64,cG5nIGJ5dGVz');
+    expect(url, isNot(contains('C:\\images\\cat.png')));
   });
 
   test('parses OpenAI text delta', () {
@@ -212,6 +243,55 @@ void main() {
 
     expect(events, hasLength(1));
     expect(events.single, isA<ChatStreamFailed>());
+  });
+
+  test('OpenAIProvider posts image attachments as data URLs', () async {
+    final adapter = _FakeHttpClientAdapter(
+      streamChunks: [Uint8List.fromList(utf8.encode('data: [DONE]\n\n'))],
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+      loadAttachmentBytes: (_) async => utf8.encode('png bytes'),
+    );
+
+    await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: _model,
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: [
+                  const MessagePart.text('look'),
+                  MessagePart.image(
+                    const AttachmentRef(
+                      id: 'a1',
+                      localPath: 'C:\\images\\cat.png',
+                      mimeType: 'image/png',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    final data = adapter.lastOptions!.data! as Map<String, Object?>;
+    final messages = data['messages']! as List<Object?>;
+    final message = messages.single! as Map<String, Object?>;
+    final content = message['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final imageUrl = image['image_url']! as Map<String, Object?>;
+    final url = imageUrl['url']! as String;
+
+    expect(url, 'data:image/png;base64,cG5nIGJ5dGVz');
+    expect(jsonEncode(data), isNot(contains('C:\\images\\cat.png')));
   });
 }
 

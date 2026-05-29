@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:newchat/core/errors/chat_error.dart';
@@ -7,12 +8,70 @@ import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 
+typedef AttachmentBytesLoader = Future<List<int>> Function(
+  AttachmentRef attachment,
+);
+
 Map<String, Object?> buildOpenAiPayload({
   required ProviderConfig provider,
   required ModelConfig model,
   required String systemPrompt,
   required List<ChatMessage> messages,
   required bool stream,
+}) {
+  _throwIfImagePartsRequireAsyncBuilder(messages);
+  return _buildOpenAiPayload(
+    provider: provider,
+    model: model,
+    systemPrompt: systemPrompt,
+    messages: messages,
+    stream: stream,
+    buildContent: _openAiContent,
+  );
+}
+
+Future<Map<String, Object?>> buildOpenAiPayloadWithImages({
+  required ProviderConfig provider,
+  required ModelConfig model,
+  required String systemPrompt,
+  required List<ChatMessage> messages,
+  required bool stream,
+  required AttachmentBytesLoader loadAttachmentBytes,
+}) async {
+  final openAiMessages = <Map<String, Object?>>[];
+  final trimmedSystemPrompt = systemPrompt.trim();
+
+  if (trimmedSystemPrompt.isNotEmpty) {
+    openAiMessages.add({
+      'role': 'system',
+      'content': trimmedSystemPrompt,
+    });
+  }
+
+  for (final message in messages) {
+    openAiMessages.add({
+      'role': _openAiRole(message.role),
+      'content': await _openAiContentWithImages(
+        message.parts,
+        loadAttachmentBytes: loadAttachmentBytes,
+      ),
+    });
+  }
+
+  return {
+    'model': model.id,
+    'messages': openAiMessages,
+    'stream': stream,
+  };
+}
+
+Map<String, Object?> _buildOpenAiPayload({
+  required ProviderConfig provider,
+  required ModelConfig model,
+  required String systemPrompt,
+  required List<ChatMessage> messages,
+  required bool stream,
+  required Object Function(List<MessagePart> parts) buildContent,
 }) {
   final openAiMessages = <Map<String, Object?>>[];
   final trimmedSystemPrompt = systemPrompt.trim();
@@ -27,7 +86,7 @@ Map<String, Object?> buildOpenAiPayload({
   for (final message in messages) {
     openAiMessages.add({
       'role': _openAiRole(message.role),
-      'content': _openAiContent(message.parts),
+      'content': buildContent(message.parts),
     });
   }
 
@@ -47,11 +106,15 @@ class OpenAIProvider implements ChatProvider {
   OpenAIProvider({
     required Dio dio,
     required Future<String?> Function(String providerId) readApiKey,
+    AttachmentBytesLoader? loadAttachmentBytes,
   })  : _dio = dio,
-        _readApiKey = readApiKey;
+        _readApiKey = readApiKey,
+        _loadAttachmentBytes = loadAttachmentBytes ??
+            ((attachment) => File(attachment.localPath).readAsBytes());
 
   final Dio _dio;
   final Future<String?> Function(String providerId) _readApiKey;
+  final AttachmentBytesLoader _loadAttachmentBytes;
 
   @override
   Stream<ChatStreamEvent> sendStream(ChatRequest request) async* {
@@ -69,12 +132,13 @@ class OpenAIProvider implements ChatProvider {
 
       final response = await _dio.postUri<Object?>(
         _chatCompletionsUri(request.provider),
-        data: buildOpenAiPayload(
+        data: await buildOpenAiPayloadWithImages(
           provider: request.provider,
           model: request.model,
           systemPrompt: request.systemPrompt,
           messages: request.messages,
           stream: request.stream,
+          loadAttachmentBytes: _loadAttachmentBytes,
         ),
         options: Options(
           responseType:
@@ -242,27 +306,66 @@ Object _openAiContent(List<MessagePart> parts) {
         .join();
   }
 
-  return parts
-      .map<Map<String, Object?>?>((part) {
-        return switch (part.type) {
-          MessagePartType.text => {
-              'type': 'text',
-              'text': part.text ?? '',
-            },
-          MessagePartType.image => {
-              'type': 'image_url',
-              'image_url': {
-                'url': part.attachment!.localPath,
-              },
-            },
-          MessagePartType.reasoning ||
-          MessagePartType.info ||
-          MessagePartType.error =>
-            null,
-        };
-      })
-      .whereType<Map<String, Object?>>()
-      .toList();
+  throw StateError(
+    'OpenAI image payloads require buildOpenAiPayloadWithImages so '
+    'attachment bytes can be encoded as data URLs.',
+  );
+}
+
+Future<Object> _openAiContentWithImages(
+  List<MessagePart> parts, {
+  required AttachmentBytesLoader loadAttachmentBytes,
+}) async {
+  final hasImages = parts.any((part) => part.type == MessagePartType.image);
+  if (!hasImages) {
+    return _openAiContent(parts);
+  }
+
+  final content = <Map<String, Object?>>[];
+  for (final part in parts) {
+    switch (part.type) {
+      case MessagePartType.text:
+        content.add({
+          'type': 'text',
+          'text': part.text ?? '',
+        });
+      case MessagePartType.image:
+        final attachment = part.attachment!;
+        final bytes = await loadAttachmentBytes(attachment);
+        content.add({
+          'type': 'image_url',
+          'image_url': {
+            'url': _dataUrlForAttachment(attachment, bytes),
+          },
+        });
+      case MessagePartType.reasoning:
+      case MessagePartType.info:
+      case MessagePartType.error:
+        break;
+    }
+  }
+
+  return content;
+}
+
+String _dataUrlForAttachment(AttachmentRef attachment, List<int> bytes) {
+  return 'data:${attachment.mimeType};base64,${base64Encode(bytes)}';
+}
+
+void _throwIfImagePartsRequireAsyncBuilder(List<ChatMessage> messages) {
+  final hasImages = messages.any(
+    (message) => message.parts.any(
+      (part) => part.type == MessagePartType.image,
+    ),
+  );
+  if (!hasImages) {
+    return;
+  }
+
+  throw StateError(
+    'OpenAI image payloads require buildOpenAiPayloadWithImages so '
+    'attachment bytes can be encoded as data URLs.',
+  );
 }
 
 List<String> _parseOpenAiSseEvents(List<SseEvent> events) {
