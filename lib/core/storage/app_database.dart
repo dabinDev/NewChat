@@ -1,8 +1,26 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+typedef DatabasesPathProvider = Future<String> Function();
+typedef DatabaseOpener = Future<Database> Function(
+  String path, {
+  required int version,
+  required OnDatabaseCreateFn onCreate,
+  required OnDatabaseOpenFn onOpen,
+});
+
 class AppDatabase {
+  AppDatabase({
+    DatabasesPathProvider? databasesPathProvider,
+    DatabaseOpener? databaseOpener,
+  })  : _databasesPathProvider = databasesPathProvider ?? getDatabasesPath,
+        _databaseOpener = databaseOpener ?? openDatabase;
+
+  final DatabasesPathProvider _databasesPathProvider;
+  final DatabaseOpener _databaseOpener;
+
   Database? _database;
+  Future<Database>? _opening;
 
   Future<Database> open() async {
     final existing = _database;
@@ -10,15 +28,32 @@ class AppDatabase {
       return existing;
     }
 
-    final databasesPath = await getDatabasesPath();
+    final opening = _opening;
+    if (opening != null) {
+      return opening;
+    }
+
+    final nextOpening = _openDatabase();
+    _opening = nextOpening;
+    try {
+      _database = await nextOpening;
+      return _database!;
+    } finally {
+      if (identical(_opening, nextOpening)) {
+        _opening = null;
+      }
+    }
+  }
+
+  Future<Database> _openDatabase() async {
+    final databasesPath = await _databasesPathProvider();
     final path = p.join(databasesPath, 'newchat.db');
-    _database = await openDatabase(
+    return _databaseOpener(
       path,
       version: 1,
       onCreate: (database, version) => _createSchema(database),
       onOpen: _createSchema,
     );
-    return _database!;
   }
 
   Future<void> _createSchema(Database database) async {
@@ -50,11 +85,18 @@ CREATE TABLE IF NOT EXISTS sessions (
   }
 
   Future<void> close() async {
-    final existing = _database;
-    if (existing == null) {
-      return;
+    final opening = _opening;
+    try {
+      if (opening != null) {
+        await opening;
+      }
+      final existing = _database;
+      if (existing != null) {
+        await existing.close();
+      }
+    } finally {
+      _database = null;
+      _opening = null;
     }
-    await existing.close();
-    _database = null;
   }
 }

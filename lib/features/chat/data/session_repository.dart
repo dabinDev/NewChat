@@ -30,23 +30,5 @@ class InMemorySessionRepository implements SessionRepository {
     _documents[document.id] = document;
   }
 
-  ChatSessionMeta _toMeta(ChatSessionDocument document) {
-    final preview = document.messages.reversed
-        .expand((message) => message.parts)
-        .where((part) => part.type == MessagePartType.text)
-        .map((part) => part.text ?? '')
-        .firstWhere((text) => text.isNotEmpty, orElse: () => '');
-    final meta = ChatSessionMeta(
-      id: document.id,
-      title: document.title,
-      lastMessagePreview: preview,
-      providerId: document.providerId,
-      modelId: document.modelId,
-      createdAt: document.createdAt,
-      updatedAt: document.updatedAt,
-      isDeleted: false,
-      schemaVersion: document.schemaVersion,
-    );
-    return meta;
-  }
+  ChatSessionMeta _toMeta(ChatSessionDocument document) => document.meta;
 }
