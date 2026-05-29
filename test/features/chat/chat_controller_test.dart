@@ -113,6 +113,184 @@ void main() {
     await events.close();
   });
 
+  test('concurrent sendMessage throws while first stream completes', () async {
+    final repository = InMemorySessionRepository();
+    final events = StreamController<ChatStreamEvent>();
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final firstSend =
+        controller.sendMessage(text: 'first', attachments: const []);
+    await pumpEventQueue();
+
+    expect(
+      () => controller.sendMessage(text: 'second', attachments: const []),
+      throwsA(isA<StateError>()),
+    );
+
+    events
+      ..add(const ChatStreamDelta('done'))
+      ..add(const ChatStreamDone());
+    await firstSend;
+
+    final document = controller.currentDocument!;
+    expect(document.messages, hasLength(2));
+    expect(document.messages.first.fullText, 'first');
+    expect(document.messages.last.fullText, 'done');
+  });
+
+  test('loadSession throws during generation without switching document',
+      () async {
+    final repository = InMemorySessionRepository();
+    final events = StreamController<ChatStreamEvent>();
+    final otherDocument = _document(id: 'session-2', title: 'Other Chat');
+    await repository.saveDocument(otherDocument);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final originalSessionId = controller.currentDocument!.id;
+    final sendFuture =
+        controller.sendMessage(text: 'hi', attachments: const []);
+    await pumpEventQueue();
+
+    await expectLater(
+      controller.loadSession('session-2'),
+      throwsA(isA<StateError>()),
+    );
+    expect(controller.currentDocument!.id, originalSessionId);
+
+    events.add(const ChatStreamDone());
+    await sendFuture;
+    await events.close();
+  });
+
+  test('createSession throws during generation', () async {
+    final events = StreamController<ChatStreamEvent>();
+    final controller = ChatController(
+      repository: InMemorySessionRepository(),
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final originalSessionId = controller.currentDocument!.id;
+    final sendFuture =
+        controller.sendMessage(text: 'hi', attachments: const []);
+    await pumpEventQueue();
+
+    await expectLater(
+      controller.createSession(
+        providerId: 'provider-1',
+        modelId: 'gpt-4o-mini',
+        title: 'Other Chat',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(controller.currentDocument!.id, originalSessionId);
+
+    events.add(const ChatStreamDone());
+    await sendFuture;
+    await events.close();
+  });
+
+  test('sendStream setup throw marks assistant failed with error part',
+      () async {
+    final controller = ChatController(
+      repository: InMemorySessionRepository(),
+      chatProvider: ThrowingChatProvider(StateError('api key secret leaked')),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(text: 'hi', attachments: const []);
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.state, MessageState.failed);
+    expect(assistant.parts.single.type, MessagePartType.error);
+    expect(assistant.parts.single.text, 'Generation failed.');
+  });
+
+  test('retryLastFailed retries failed assistant without duplicating user',
+      () async {
+    final provider = SequentialChatProvider([
+      [
+        const ChatStreamFailed(
+          ChatError(type: ChatErrorType.network, message: 'network failed'),
+        ),
+      ],
+      [
+        const ChatStreamDelta('retry ok'),
+        const ChatStreamDone(),
+      ],
+    ]);
+    final controller = ChatController(
+      repository: InMemorySessionRepository(),
+      chatProvider: provider,
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(text: 'hi', attachments: const []);
+    await controller.retryLastFailed();
+
+    final messages = controller.currentDocument!.messages;
+    expect(messages, hasLength(2));
+    expect(messages.first.role, ChatRole.user);
+    expect(messages.first.fullText, 'hi');
+    expect(messages.last.role, ChatRole.assistant);
+    expect(messages.last.state, MessageState.completed);
+    expect(messages.last.fullText, 'retry ok');
+  });
+
+  test('retryLastFailed throws while generation is active', () async {
+    final events = StreamController<ChatStreamEvent>();
+    final controller = ChatController(
+      repository: InMemorySessionRepository(),
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final sendFuture =
+        controller.sendMessage(text: 'hi', attachments: const []);
+    await pumpEventQueue();
+
+    await expectLater(
+      controller.retryLastFailed(),
+      throwsA(isA<StateError>()),
+    );
+
+    events.add(const ChatStreamDone());
+    await sendFuture;
+    await events.close();
+  });
+
   group('SessionListController', () {
     test('load reads repository metas', () async {
       final repository = InMemorySessionRepository();
@@ -176,6 +354,46 @@ class ControlledChatProvider implements ChatProvider {
 
   @override
   Stream<ChatStreamEvent> sendStream(ChatRequest request) => events;
+
+  @override
+  Future<ConnectionTestResult> testConnection(
+    ConnectionTestRequest request,
+  ) async {
+    return const ConnectionTestResult.success();
+  }
+}
+
+class ThrowingChatProvider implements ChatProvider {
+  const ThrowingChatProvider(this.error);
+
+  final Object error;
+
+  @override
+  Stream<ChatStreamEvent> sendStream(ChatRequest request) {
+    throw error;
+  }
+
+  @override
+  Future<ConnectionTestResult> testConnection(
+    ConnectionTestRequest request,
+  ) async {
+    return const ConnectionTestResult.success();
+  }
+}
+
+class SequentialChatProvider implements ChatProvider {
+  SequentialChatProvider(this.eventBatches);
+
+  final List<List<ChatStreamEvent>> eventBatches;
+  var _index = 0;
+
+  @override
+  Stream<ChatStreamEvent> sendStream(ChatRequest request) async* {
+    final events = eventBatches[_index++];
+    for (final event in events) {
+      yield event;
+    }
+  }
 
   @override
   Future<ConnectionTestResult> testConnection(

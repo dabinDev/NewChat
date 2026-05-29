@@ -19,10 +19,10 @@ class ChatController {
   final Uuid _uuid = const Uuid();
 
   ChatSessionDocument? _currentDocument;
-  StreamSubscription<ChatStreamEvent>? _streamSubscription;
-  Completer<void>? _streamCompleter;
+  StreamIterator<ChatStreamEvent>? _streamIterator;
+  bool _generationInProgress = false;
+  String? _streamingSessionId;
   String? _streamingAssistantId;
-  bool _terminalStreamEventSeen = false;
 
   ChatSessionDocument? get currentDocument => _currentDocument;
 
@@ -31,6 +31,7 @@ class ChatController {
     required String modelId,
     required String title,
   }) async {
+    _throwIfGenerationActive();
     final now = DateTime.now().toUtc();
     final document = ChatSessionDocument(
       id: _uuid.v4(),
@@ -48,6 +49,7 @@ class ChatController {
   }
 
   Future<void> loadSession(String sessionId) async {
+    _throwIfGenerationActive();
     final document = await _repository.loadDocument(sessionId);
     if (document == null) {
       throw StateError('Chat session not found: $sessionId');
@@ -59,7 +61,9 @@ class ChatController {
     required String text,
     required List<AttachmentRef> attachments,
   }) async {
+    _throwIfGenerationActive();
     final document = _requireDocument();
+    _generationInProgress = true;
     final now = DateTime.now().toUtc();
     final userMessage = ChatMessage(
       id: _uuid.v4(),
@@ -80,23 +84,35 @@ class ChatController {
     );
     await _repository.saveDocument(_currentDocument!);
 
-    await _streamAssistantResponse();
+    try {
+      await _streamAssistantResponse();
+    } finally {
+      _generationInProgress = false;
+    }
   }
 
   Future<void> stopGeneration() async {
-    final subscription = _streamSubscription;
+    final iterator = _streamIterator;
+    final sessionId = _streamingSessionId;
     final assistantId = _streamingAssistantId;
     final document = _currentDocument;
-    if (subscription == null || assistantId == null || document == null) {
+    if (iterator == null ||
+        sessionId == null ||
+        assistantId == null ||
+        document == null) {
       return;
     }
 
-    await subscription.cancel();
-    _streamSubscription = null;
-    _streamingAssistantId = null;
+    await iterator.cancel();
+    final currentDocument = _currentDocument;
+    if (currentDocument?.id != sessionId) {
+      _clearGeneration();
+      _generationInProgress = false;
+      return;
+    }
     final now = DateTime.now().toUtc();
     _currentDocument = _replaceMessage(
-      document,
+      currentDocument!,
       assistantId,
       (message) => _copyMessage(
         message,
@@ -106,30 +122,37 @@ class ChatController {
       updatedAt: now,
     );
     await _repository.saveDocument(_currentDocument!);
-    _completeStream();
+    _clearGeneration();
+    _generationInProgress = false;
   }
 
   Future<void> retryLastFailed() async {
+    _throwIfGenerationActive();
     final document = _requireDocument();
-    if (document.messages.length < 2 ||
-        document.messages.last.state != MessageState.failed ||
-        document.messages.last.role != ChatRole.assistant) {
-      return;
-    }
+    _generationInProgress = true;
+    try {
+      if (document.messages.length < 2 ||
+          document.messages.last.state != MessageState.failed ||
+          document.messages.last.role != ChatRole.assistant) {
+        return;
+      }
 
-    final previous = document.messages[document.messages.length - 2];
-    if (previous.role != ChatRole.user) {
-      return;
-    }
+      final previous = document.messages[document.messages.length - 2];
+      if (previous.role != ChatRole.user) {
+        return;
+      }
 
-    final now = DateTime.now().toUtc();
-    _currentDocument = _copyDocument(
-      document,
-      messages: document.messages.take(document.messages.length - 1).toList(),
-      updatedAt: now,
-    );
-    await _repository.saveDocument(_currentDocument!);
-    await _streamAssistantResponse();
+      final now = DateTime.now().toUtc();
+      _currentDocument = _copyDocument(
+        document,
+        messages: document.messages.take(document.messages.length - 1).toList(),
+        updatedAt: now,
+      );
+      await _repository.saveDocument(_currentDocument!);
+      await _streamAssistantResponse();
+    } finally {
+      _generationInProgress = false;
+    }
   }
 
   Future<void> _streamAssistantResponse() async {
@@ -150,52 +173,65 @@ class ChatController {
     );
     await _repository.saveDocument(_currentDocument!);
 
-    final completer = Completer<void>();
-    _streamCompleter = completer;
+    _streamingSessionId = document.id;
     _streamingAssistantId = assistant.id;
-    _terminalStreamEventSeen = false;
 
-    _streamSubscription =
-        _chatProvider.sendStream(_requestFor(_currentDocument!)).listen(
-      (event) => _handleStreamEvent(assistant.id, event),
-      onError: (Object error) async {
-        await _markAssistantFailed(assistant.id, error.toString());
-        _completeStream();
-      },
-      onDone: () {
-        if (!_terminalStreamEventSeen) {
-          _completeStream();
+    try {
+      final stream = _chatProvider.sendStream(_requestFor(_currentDocument!));
+      final iterator = StreamIterator(stream);
+      _streamIterator = iterator;
+
+      while (await iterator.moveNext()) {
+        if (!_isCurrentGeneration(document.id, assistant.id)) {
+          await iterator.cancel();
+          return;
         }
-      },
-      cancelOnError: true,
-    );
 
-    await completer.future;
-  }
-
-  Future<void> _handleStreamEvent(
-    String assistantId,
-    ChatStreamEvent event,
-  ) async {
-    switch (event) {
-      case ChatStreamDelta(:final text):
-        _appendAssistantPart(assistantId, MessagePart.text(text));
-      case ChatStreamDone():
-        _terminalStreamEventSeen = true;
-        _streamSubscription?.pause();
-        await _markAssistantCompleted(assistantId);
-        await _streamSubscription?.cancel();
-        _completeStream();
-      case ChatStreamFailed(:final error):
-        _terminalStreamEventSeen = true;
-        _streamSubscription?.pause();
-        await _markAssistantFailed(assistantId, error.message);
-        await _streamSubscription?.cancel();
-        _completeStream();
+        final shouldContinue = await _handleStreamEvent(
+          document.id,
+          assistant.id,
+          iterator.current,
+        );
+        if (!shouldContinue) {
+          await iterator.cancel();
+          return;
+        }
+      }
+    } on Object {
+      if (_isCurrentGeneration(document.id, assistant.id)) {
+        await _markAssistantFailed(assistant.id, 'Generation failed.');
+      }
+    } finally {
+      if (_isCurrentGeneration(document.id, assistant.id)) {
+        _clearGeneration();
+      }
     }
   }
 
-  void _appendAssistantPart(String assistantId, MessagePart part) {
+  Future<bool> _handleStreamEvent(
+    String sessionId,
+    String assistantId,
+    ChatStreamEvent event,
+  ) async {
+    if (!_isCurrentGeneration(sessionId, assistantId)) {
+      return false;
+    }
+
+    switch (event) {
+      case ChatStreamDelta(:final text):
+        await _appendAssistantPart(assistantId, MessagePart.text(text));
+        return true;
+      case ChatStreamDone():
+        await _markAssistantCompleted(assistantId);
+        return false;
+      case ChatStreamFailed(:final error):
+        await _markAssistantFailed(assistantId, error.message);
+        return false;
+    }
+  }
+
+  Future<void> _appendAssistantPart(
+      String assistantId, MessagePart part) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
     _currentDocument = _replaceMessage(
@@ -208,6 +244,7 @@ class ChatController {
       ),
       updatedAt: now,
     );
+    await _repository.saveDocument(_currentDocument!);
   }
 
   Future<void> _markAssistantCompleted(String assistantId) async {
@@ -243,15 +280,10 @@ class ChatController {
     await _repository.saveDocument(_currentDocument!);
   }
 
-  void _completeStream() {
-    _streamSubscription = null;
+  void _clearGeneration() {
+    _streamIterator = null;
+    _streamingSessionId = null;
     _streamingAssistantId = null;
-    _terminalStreamEventSeen = false;
-    final completer = _streamCompleter;
-    _streamCompleter = null;
-    if (completer != null && !completer.isCompleted) {
-      completer.complete();
-    }
   }
 
   ChatSessionDocument _requireDocument() {
@@ -261,6 +293,17 @@ class ChatController {
     }
     return document;
   }
+
+  void _throwIfGenerationActive() {
+    if (_generationInProgress) {
+      throw StateError('Generation is already in progress.');
+    }
+  }
+
+  bool _isCurrentGeneration(String sessionId, String assistantId) =>
+      _streamingSessionId == sessionId &&
+      _streamingAssistantId == assistantId &&
+      _currentDocument?.id == sessionId;
 
   ChatRequest _requestFor(ChatSessionDocument document) {
     final now = DateTime.now().toUtc();
