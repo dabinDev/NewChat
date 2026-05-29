@@ -5,6 +5,7 @@ import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/core/errors/chat_error.dart';
 import 'package:newchat/core/network/http_client_provider.dart';
 import 'package:newchat/core/security/secret_masker.dart';
+import 'package:newchat/core/storage/app_database.dart';
 import 'package:newchat/core/storage/secure_key_store.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/providers/data/claude_provider.dart';
@@ -18,7 +19,13 @@ typedef ChatProviderFactory = ChatProvider Function(
 );
 
 final providerRepositoryProvider = Provider<ProviderRepository>((ref) {
-  return InMemoryProviderRepository();
+  return PersistentProviderRepository(ref.watch(appDatabaseProvider));
+});
+
+final appDatabaseProvider = Provider<AppDatabase>((ref) {
+  final database = AppDatabase();
+  ref.onDispose(database.close);
+  return database;
 });
 
 final secureKeyStoreProvider = Provider<ProviderKeyStore>((ref) {
@@ -144,7 +151,7 @@ class ProviderController {
         );
       }
       return ProviderConnectionTestResult.failure(
-        _safeErrorMessage(result.error!),
+        _safeErrorMessage(result.error!, apiKeyInput),
       );
     } on Object catch (error) {
       return ProviderConnectionTestResult.failure(
@@ -200,10 +207,11 @@ class ProviderController {
     };
   }
 
-  String _safeErrorMessage(ChatError error) {
+  String _safeErrorMessage(ChatError error, String apiKeyInput) {
+    final message = _maskKey(error.message, apiKeyInput);
     return error.statusCode == null
-        ? error.message
-        : '${error.message} (${error.statusCode})';
+        ? message
+        : '$message (${error.statusCode})';
   }
 
   String _safeDiagnostic(String message, String apiKeyInput, Object error) {
@@ -212,6 +220,14 @@ class ProviderController {
       return message;
     }
     return '$message API key: ${maskSecret(trimmed)}.';
+  }
+
+  String _maskKey(String message, String apiKeyInput) {
+    final trimmed = apiKeyInput.trim();
+    if (trimmed.isEmpty) {
+      return message;
+    }
+    return message.replaceAll(trimmed, '[masked]');
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newchat/core/errors/chat_error.dart';
 import 'package:newchat/core/storage/secure_key_store.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
@@ -130,9 +131,46 @@ void main() {
 
     expect(result.message, isNot(contains('sk-live-secret-value')));
   });
+
+  test('testConnection masks API key leaked in provider error message',
+      () async {
+    const rawKey = 'sk-live-provider-error-secret';
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [_model('gpt-4o-mini', ProviderProtocol.openai)],
+    );
+    final keyStore = FakeProviderKeyStore();
+    final provider = RecordingChatProvider(
+      error: const ChatError(
+        type: ChatErrorType.authentication,
+        message: 'Authentication failed for sk-live-provider-error-secret',
+        statusCode: 401,
+      ),
+    );
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: keyStore,
+      dio: Dio(),
+      openAiProviderFactory: (_, __) => provider,
+    );
+
+    final result = await controller.testConnection(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      apiKeyInput: rawKey,
+    );
+
+    expect(result.isSuccess, isFalse);
+    expect(result.message, isNot(contains(rawKey)));
+    expect(result.message, contains('[masked]'));
+    expect(result.message, contains('(401)'));
+  });
 }
 
 class RecordingChatProvider implements ChatProvider {
+  RecordingChatProvider({this.error});
+
+  final ChatError? error;
   final testedRequests = <ConnectionTestRequest>[];
 
   @override
@@ -143,6 +181,10 @@ class RecordingChatProvider implements ChatProvider {
     ConnectionTestRequest request,
   ) async {
     testedRequests.add(request);
+    final error = this.error;
+    if (error != null) {
+      return ConnectionTestResult.failure(error);
+    }
     return const ConnectionTestResult.success();
   }
 }
