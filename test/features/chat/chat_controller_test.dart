@@ -111,6 +111,52 @@ User message:
 why?''');
   });
 
+  test('sendMessage stores rich reply ref for quoted image message', () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+    );
+    final now = DateTime.utc(2026, 5, 30, 8);
+    final image = AttachmentRef(
+      id: 'image-1',
+      localPath: '/tmp/image.png',
+      mimeType: 'image/png',
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(
+      text: 'what should I change?',
+      attachments: const [],
+      replyRef: MessageReplyRef(
+        messageId: 'assistant-image',
+        role: ChatRole.assistant,
+        textPreview: 'product screenshot',
+        imageAttachment: image,
+        createdAt: now,
+      ),
+    );
+
+    final userMessage = controller.currentDocument!.messages.first;
+    expect(userMessage.replyRef!.messageId, 'assistant-image');
+    expect(userMessage.replyRef!.role, ChatRole.assistant);
+    expect(userMessage.replyRef!.textPreview, 'product screenshot');
+    expect(userMessage.replyRef!.imageAttachment!.id, 'image-1');
+    expect(userMessage.replyToMessageId, 'assistant-image');
+    expect(userMessage.replyPreview, 'product screenshot');
+    expect(fakeProvider.requests.single.messages.first.fullText, '''
+The user is replying to this earlier image message:
+"[Image] product screenshot"
+
+User message:
+what should I change?''');
+  });
+
   test('failed stream marks assistant failed and stores error part', () async {
     final repository = InMemorySessionRepository();
     final fakeProvider = FakeChatProvider([
@@ -173,6 +219,48 @@ why?''');
 
     expect(controller.currentDocument!.id, 'session-1');
     expect(controller.currentDocument!.title, 'Existing Chat');
+  });
+
+  test('loadSession converts trailing streaming assistant to interrupted',
+      () async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        messages: [
+          ChatMessage(
+            id: 'user-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('hello')],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+          ChatMessage(
+            id: 'assistant-1',
+            role: ChatRole.assistant,
+            state: MessageState.streaming,
+            parts: const [MessagePart.text('partial')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+        ],
+      ),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const []),
+    );
+
+    await controller.loadSession('session-1');
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.state, MessageState.interrupted);
+    expect(assistant.fullText, 'partial');
+    expect(
+      (await repository.loadDocument('session-1'))!.messages.last.state,
+      MessageState.interrupted,
+    );
   });
 
   test('switchModel preserves loaded session context summary metadata',
@@ -296,6 +384,52 @@ why?''');
     expect(retainedUser.editHistory.single.editedAt, firstEditAt);
   });
 
+  test('retryLastFailed retries interrupted and cancelled trailing assistants',
+      () async {
+    for (final state in [MessageState.interrupted, MessageState.cancelled]) {
+      final repository = InMemorySessionRepository();
+      await repository.saveDocument(
+        _document(
+          id: 'session-${state.name}',
+          messages: [
+            ChatMessage(
+              id: 'user-1',
+              role: ChatRole.user,
+              state: MessageState.completed,
+              parts: const [MessagePart.text('hello')],
+              createdAt: DateTime.utc(2026, 5, 30, 8),
+              updatedAt: DateTime.utc(2026, 5, 30, 8),
+            ),
+            ChatMessage(
+              id: 'assistant-1',
+              role: ChatRole.assistant,
+              state: state,
+              parts: const [MessagePart.text('partial')],
+              createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+              updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+            ),
+          ],
+        ),
+      );
+      final controller = ChatController(
+        repository: repository,
+        chatProvider: FakeChatProvider(const [
+          ChatStreamDelta('retried'),
+          ChatStreamDone(),
+        ]),
+      );
+
+      await controller.loadSession('session-${state.name}');
+      await controller.retryLastFailed();
+
+      final messages = controller.currentDocument!.messages;
+      expect(messages, hasLength(2));
+      expect(messages.first.fullText, 'hello');
+      expect(messages.last.state, MessageState.completed);
+      expect(messages.last.fullText, 'retried');
+    }
+  });
+
   test(
       'editUserMessageAndRegenerate records history and removes later messages',
       () async {
@@ -373,6 +507,81 @@ why?''');
     expect(
       providerUser.parts.where((part) => part.type == MessagePartType.image),
       hasLength(1),
+    );
+  });
+
+  test('edit image prompt sends new user message without overwriting image',
+      () async {
+    final repository = InMemorySessionRepository();
+    final oldImage = AttachmentRef(
+      id: 'image-old',
+      localPath: '/tmp/old.png',
+      mimeType: 'image/png',
+    );
+    final oldImageMessage = ChatMessage(
+      id: 'assistant-image',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: [MessagePart.image(oldImage)],
+      createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+      updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+    );
+    final outputDir = await Directory.systemTemp.createTemp('newchat-test-');
+    addTearDown(() => outputDir.delete(recursive: true));
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        modelId: 'gpt-image-2',
+        messages: [
+          ChatMessage(
+            id: 'user-original',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('draw a red kite')],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+          oldImageMessage,
+        ],
+      ),
+    );
+    final fakeProvider = FakeChatProvider([
+      ChatStreamImage(
+        bytes: Uint8List.fromList([7, 8, 9]),
+        mimeType: 'image/png',
+      ),
+      const ChatStreamDone(),
+    ]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      imageOutputDirectory: () async => outputDir,
+    );
+
+    await controller.loadSession('session-1');
+    await controller.sendImageEditPrompt(
+      imageMessage: oldImageMessage,
+      prompt: 'make it blue',
+    );
+
+    final messages = controller.currentDocument!.messages;
+    expect(messages.map((message) => message.id), [
+      'user-original',
+      'assistant-image',
+      messages[2].id,
+      messages[3].id,
+    ]);
+    expect(messages[1].parts.single.attachment!.id, 'image-old');
+    expect(messages[2].role, ChatRole.user);
+    expect(messages[2].fullText, 'make it blue');
+    expect(messages[3].role, ChatRole.assistant);
+    expect(messages[3].parts.single.type, MessagePartType.image);
+    expect(messages[3].parts.single.attachment!.id, isNot('image-old'));
+    expect(
+      fakeProvider.requests.single.messages
+          .lastWhere((message) => message.role == ChatRole.user)
+          .fullText,
+      'make it blue',
     );
   });
 
@@ -1135,6 +1344,37 @@ why?''');
       expect(await repository.loadDocument('session-1'), isNull);
       expect(controller.sessions, isEmpty);
     });
+
+    test('pins marks unread and soft deletes sessions', () async {
+      final repository = InMemorySessionRepository();
+      await repository.saveDocument(_document(id: 'session-1'));
+      final controller = SessionListController(repository: repository);
+
+      await controller.pinSession('session-1');
+
+      var document = (await repository.loadDocument('session-1'))!;
+      expect(document.isPinned, isTrue);
+      expect(document.pinnedAt, isNotNull);
+      expect(controller.sessions.single.isPinned, isTrue);
+
+      await controller.markUnread('session-1');
+      document = (await repository.loadDocument('session-1'))!;
+      expect(document.isUnread, isTrue);
+      expect(controller.sessions.single.isUnread, isTrue);
+
+      await controller.markRead('session-1');
+      document = (await repository.loadDocument('session-1'))!;
+      expect(document.isUnread, isFalse);
+
+      await controller.unpinSession('session-1');
+      document = (await repository.loadDocument('session-1'))!;
+      expect(document.isPinned, isFalse);
+      expect(document.pinnedAt, isNull);
+
+      await controller.softDeleteSession('session-1');
+      expect(await repository.loadDocument('session-1'), isNull);
+      expect(controller.sessions, isEmpty);
+    });
   });
 }
 
@@ -1225,6 +1465,9 @@ class ThrowingSaveSessionRepository implements SessionRepository {
 
   @override
   Future<void> deleteSession(String id) => _delegate.deleteSession(id);
+
+  @override
+  Future<void> softDeleteSession(String id) => _delegate.softDeleteSession(id);
 
   @override
   Future<ChatSessionDocument?> loadDocument(String id) =>

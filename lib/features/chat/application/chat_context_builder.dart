@@ -56,7 +56,7 @@ class ChatContextBuilder {
           preserveImages: message.id == latestUserId,
           addQuotePreface: message.id == latestUserId &&
               message.role == ChatRole.user &&
-              _hasText(message.replyPreview),
+              _hasQuoteRef(message),
         ),
     ];
 
@@ -106,8 +106,8 @@ class ChatContextBuilder {
     final parts = <MessagePart>[
       if (addQuotePreface)
         MessagePart.text(
-          'The user is replying to this earlier message:\n'
-          '"${_compactText(message.replyPreview!)}"\n\n'
+          'The user is replying to this earlier ${_quoteTarget(message)}:\n'
+          '"${_quotePreview(message)}"\n\n'
           'User message:\n'
           '${message.fullText}',
         )
@@ -126,6 +126,7 @@ class ChatContextBuilder {
       updatedAt: message.updatedAt,
       replyToMessageId: message.replyToMessageId,
       replyPreview: message.replyPreview,
+      replyRef: message.replyRef,
       editedAt: message.editedAt,
       editHistory: message.editHistory,
     );
@@ -140,6 +141,24 @@ class ChatContextBuilder {
       return text;
     }
     return '${text.substring(0, maxLength - 1)}...';
+  }
+
+  static bool _hasQuoteRef(ChatMessage message) {
+    final ref = message.replyRef;
+    return ref != null &&
+        (_hasText(ref.textPreview) || ref.imageAttachment != null);
+  }
+
+  static String _quoteTarget(ChatMessage message) =>
+      message.replyRef?.imageAttachment == null ? 'message' : 'image message';
+
+  static String _quotePreview(ChatMessage message) {
+    final ref = message.replyRef!;
+    final preview = _compactText(ref.textPreview);
+    if (ref.imageAttachment == null) {
+      return preview;
+    }
+    return preview.isEmpty ? '[Image]' : '[Image] $preview';
   }
 }
 

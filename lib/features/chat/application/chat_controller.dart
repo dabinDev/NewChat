@@ -121,7 +121,11 @@ class ChatController extends ChangeNotifier {
     if (document == null) {
       throw StateError('Chat session not found: $sessionId');
     }
-    _setCurrentDocument(document);
+    final restored = _interruptTrailingStreamingAssistant(document);
+    _setCurrentDocument(restored);
+    if (!identical(restored, document)) {
+      await _repository.saveDocument(restored);
+    }
   }
 
   Future<void> sendMessage({
@@ -129,6 +133,7 @@ class ChatController extends ChangeNotifier {
     required List<AttachmentRef> attachments,
     String? replyToMessageId,
     String? replyPreview,
+    MessageReplyRef? replyRef,
   }) async {
     _throwIfGenerationActive();
     final document = _requireDocument();
@@ -146,6 +151,7 @@ class ChatController extends ChangeNotifier {
       updatedAt: now,
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
+      replyRef: replyRef,
     );
 
     _setCurrentDocument(
@@ -226,6 +232,17 @@ class ChatController extends ChangeNotifier {
     }
   }
 
+  Future<void> sendImageEditPrompt({
+    required ChatMessage imageMessage,
+    required String prompt,
+  }) async {
+    final trimmedPrompt = prompt.trim();
+    if (trimmedPrompt.isEmpty) {
+      throw ArgumentError.value(prompt, 'prompt', 'Prompt cannot be empty.');
+    }
+    await sendMessage(text: trimmedPrompt, attachments: const []);
+  }
+
   Future<void> stopGeneration() async {
     final iterator = _streamIterator;
     final sessionId = _streamingSessionId;
@@ -269,8 +286,8 @@ class ChatController extends ChangeNotifier {
     _generationInProgress = true;
     try {
       if (document.messages.length < 2 ||
-          document.messages.last.state != MessageState.failed ||
-          document.messages.last.role != ChatRole.assistant) {
+          document.messages.last.role != ChatRole.assistant ||
+          !_canRetryAssistant(document.messages.last.state)) {
         return;
       }
 
@@ -624,6 +641,9 @@ ChatSessionDocument _copyDocument(
   DateTime? updatedAt,
   Object? contextSummary = _copyUnset,
   Object? contextSummaryUpdatedAt = _copyUnset,
+  Object? isPinned = _copyUnset,
+  Object? pinnedAt = _copyUnset,
+  Object? isUnread = _copyUnset,
 }) =>
     ChatSessionDocument(
       id: document.id,
@@ -641,6 +661,15 @@ ChatSessionDocument _copyDocument(
       contextSummaryUpdatedAt: identical(contextSummaryUpdatedAt, _copyUnset)
           ? document.contextSummaryUpdatedAt
           : contextSummaryUpdatedAt as DateTime?,
+      isPinned: identical(isPinned, _copyUnset)
+          ? document.isPinned
+          : isPinned as bool,
+      pinnedAt: identical(pinnedAt, _copyUnset)
+          ? document.pinnedAt
+          : pinnedAt as DateTime?,
+      isUnread: identical(isUnread, _copyUnset)
+          ? document.isUnread
+          : isUnread as bool,
     );
 
 ChatSessionDocument _replaceMessage(
@@ -665,6 +694,7 @@ ChatMessage _copyMessage(
   DateTime? updatedAt,
   Object? replyToMessageId = _copyUnset,
   Object? replyPreview = _copyUnset,
+  Object? replyRef = _copyUnset,
   Object? editedAt = _copyUnset,
   Object? editHistory = _copyUnset,
 }) =>
@@ -681,6 +711,9 @@ ChatMessage _copyMessage(
       replyPreview: identical(replyPreview, _copyUnset)
           ? message.replyPreview
           : replyPreview as String?,
+      replyRef: identical(replyRef, _copyUnset)
+          ? message.replyRef
+          : replyRef as MessageReplyRef?,
       editedAt: identical(editedAt, _copyUnset)
           ? message.editedAt
           : editedAt as DateTime?,
@@ -707,6 +740,34 @@ List<MessagePart> _appendMessagePart(
 
 bool _hasImageAttachments(ChatMessage message) =>
     message.parts.any((part) => part.type == MessagePartType.image);
+
+bool _canRetryAssistant(MessageState state) =>
+    state == MessageState.failed ||
+    state == MessageState.cancelled ||
+    state == MessageState.interrupted;
+
+ChatSessionDocument _interruptTrailingStreamingAssistant(
+  ChatSessionDocument document,
+) {
+  if (document.messages.isEmpty) {
+    return document;
+  }
+  final last = document.messages.last;
+  if (last.role != ChatRole.assistant || last.state != MessageState.streaming) {
+    return document;
+  }
+  final now = DateTime.now().toUtc();
+  return _replaceMessage(
+    document,
+    last.id,
+    (message) => _copyMessage(
+      message,
+      state: MessageState.interrupted,
+      updatedAt: now,
+    ),
+    updatedAt: now,
+  );
+}
 
 Future<Directory> _defaultImageOutputDirectory() async {
   final documentsDirectory = await getApplicationDocumentsDirectory();
