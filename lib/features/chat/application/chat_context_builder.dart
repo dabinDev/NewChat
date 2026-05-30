@@ -103,6 +103,9 @@ class ChatContextBuilder {
     required bool preserveImages,
     required bool addQuotePreface,
   }) {
+    final quotedImage =
+        addQuotePreface ? message.replyRef?.imageAttachment : null;
+    final quotedImageId = quotedImage?.id;
     final parts = <MessagePart>[
       if (addQuotePreface)
         MessagePart.text(
@@ -113,10 +116,13 @@ class ChatContextBuilder {
         )
       else
         ...message.parts.where((part) => part.type != MessagePartType.image),
-      if (addQuotePreface && message.replyRef?.imageAttachment != null)
-        MessagePart.image(message.replyRef!.imageAttachment!),
+      if (quotedImage != null) MessagePart.image(quotedImage),
       if (preserveImages)
-        ...message.parts.where((part) => part.type == MessagePartType.image),
+        ...message.parts.where(
+          (part) =>
+              part.type == MessagePartType.image &&
+              part.attachment?.id != quotedImageId,
+        ),
     ];
 
     return ChatMessage(

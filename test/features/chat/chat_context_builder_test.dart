@@ -227,6 +227,41 @@ make the background darker''');
     );
   });
 
+  test('dedupes quoted image that is also attached directly', () {
+    final sameImage = _attachment('same-image');
+    final result = ChatContextBuilder(recentMessageLimit: 4).build(
+      _document(
+        messages: [
+          _message(
+            id: 'current-reply',
+            role: ChatRole.user,
+            text: 'use this same image',
+            parts: [
+              const MessagePart.text('use this same image'),
+              MessagePart.image(sameImage),
+            ],
+            replyRef: MessageReplyRef(
+              messageId: 'assistant-image',
+              role: ChatRole.assistant,
+              textPreview: 'same image',
+              imageAttachment: sameImage,
+              createdAt: DateTime.utc(2026, 5, 30),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final providerUser = result.messages.single;
+
+    expect(
+      providerUser.parts
+          .where((part) => part.type == MessagePartType.image)
+          .map((part) => part.attachment!.id),
+      ['same-image'],
+    );
+  });
+
   test('preserves metadata on copied provider messages', () {
     final editedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
     final firstEditAt = DateTime.utc(2026, 5, 30, 0, 30);

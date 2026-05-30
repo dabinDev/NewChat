@@ -157,6 +157,63 @@ User message:
 what should I change?''');
   });
 
+  test('quoted image is validated as image input before provider call',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    final quotedImage = const AttachmentRef(
+      id: 'quoted-image',
+      localPath: '/tmp/quoted.png',
+      mimeType: 'image/png',
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'text-only',
+          ),
+        ],
+        models: [
+          _model(
+            'text-only',
+            ProviderProtocol.openai,
+            supportsImages: false,
+          ),
+        ],
+      ),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'text-only',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(
+      text: 'edit this image',
+      attachments: const [],
+      replyRef: MessageReplyRef(
+        messageId: 'assistant-image',
+        role: ChatRole.assistant,
+        textPreview: 'original image',
+        imageAttachment: quotedImage,
+        createdAt: DateTime.utc(2026, 5, 30, 8),
+      ),
+    );
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.role, ChatRole.assistant);
+    expect(assistant.state, MessageState.failed);
+    expect(
+      assistant.parts.single.text,
+      'The selected model does not support images.',
+    );
+    expect(fakeProvider.requests, isEmpty);
+  });
+
   test('failed stream marks assistant failed and stores error part', () async {
     final repository = InMemorySessionRepository();
     final fakeProvider = FakeChatProvider([
@@ -581,7 +638,72 @@ what should I change?''');
       fakeProvider.requests.single.messages
           .lastWhere((message) => message.role == ChatRole.user)
           .fullText,
-      'make it blue',
+      '''
+The user is replying to this earlier image message:
+"[Image]"
+
+User message:
+make it blue''',
+    );
+  });
+
+  test('sendImageEditPrompt sends referenced image in provider request',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    final image = const AttachmentRef(
+      id: 'image-old',
+      localPath: '/tmp/old.png',
+      mimeType: 'image/png',
+    );
+    final imageMessage = ChatMessage(
+      id: 'assistant-image',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: [
+        const MessagePart.text('original product shot'),
+        MessagePart.image(image),
+      ],
+      createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+      updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+    );
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        messages: [
+          ChatMessage(
+            id: 'user-original',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('draw product')],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+          imageMessage,
+        ],
+      ),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.sendImageEditPrompt(
+      imageMessage: imageMessage,
+      prompt: 'change the background to night',
+    );
+
+    final providerUser = fakeProvider.requests.single.messages.lastWhere(
+      (message) => message.role == ChatRole.user,
+    );
+    expect(providerUser.replyRef!.messageId, 'assistant-image');
+    expect(providerUser.replyRef!.imageAttachment!.id, 'image-old');
+    expect(
+      providerUser.parts
+          .where((part) => part.type == MessagePartType.image)
+          .map((part) => part.attachment!.id),
+      ['image-old'],
     );
   });
 

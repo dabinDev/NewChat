@@ -165,7 +165,7 @@ class ChatController extends ChangeNotifier {
 
     try {
       await _streamAssistantResponse(
-        hasImageAttachments: attachments.isNotEmpty,
+        hasImageAttachments: attachments.isNotEmpty || _hasReplyImage(replyRef),
       );
     } finally {
       _generationInProgress = false;
@@ -240,7 +240,20 @@ class ChatController extends ChangeNotifier {
     if (trimmedPrompt.isEmpty) {
       throw ArgumentError.value(prompt, 'prompt', 'Prompt cannot be empty.');
     }
-    await sendMessage(text: trimmedPrompt, attachments: const []);
+    final imageAttachment = _firstImageAttachment(imageMessage);
+    await sendMessage(
+      text: trimmedPrompt,
+      attachments: const [],
+      replyRef: imageAttachment == null
+          ? null
+          : MessageReplyRef(
+              messageId: imageMessage.id,
+              role: imageMessage.role,
+              textPreview: _compactPreview(imageMessage.fullText),
+              imageAttachment: imageAttachment,
+              createdAt: imageMessage.createdAt,
+            ),
+    );
   }
 
   Future<void> stopGeneration() async {
@@ -307,7 +320,8 @@ class ChatController extends ChangeNotifier {
       );
       await _repository.saveDocument(_currentDocument!);
       await _streamAssistantResponse(
-        hasImageAttachments: _hasImageAttachments(previous),
+        hasImageAttachments:
+            _hasImageAttachments(previous) || _hasReplyImage(previous.replyRef),
       );
     } finally {
       _generationInProgress = false;
@@ -740,6 +754,26 @@ List<MessagePart> _appendMessagePart(
 
 bool _hasImageAttachments(ChatMessage message) =>
     message.parts.any((part) => part.type == MessagePartType.image);
+
+bool _hasReplyImage(MessageReplyRef? replyRef) =>
+    replyRef?.imageAttachment != null;
+
+AttachmentRef? _firstImageAttachment(ChatMessage message) {
+  for (final part in message.parts) {
+    if (part.type == MessagePartType.image && part.attachment != null) {
+      return part.attachment;
+    }
+  }
+  return null;
+}
+
+String _compactPreview(String text) {
+  final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.length <= 120) {
+    return normalized;
+  }
+  return '${normalized.substring(0, 117)}...';
+}
 
 bool _canRetryAssistant(MessageState state) =>
     state == MessageState.failed ||
