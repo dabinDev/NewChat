@@ -309,11 +309,11 @@ class ChatMessage {
     required ChatRole role,
     required DateTime createdAt,
   }) {
-    if (messageId == null) {
+    if (messageId == null && textPreview == null) {
       return null;
     }
     return MessageReplyRef(
-      messageId: messageId,
+      messageId: messageId ?? '',
       role: role,
       textPreview: textPreview ?? '',
       createdAt: createdAt,

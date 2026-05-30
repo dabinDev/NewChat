@@ -211,6 +211,25 @@ void main() {
     expect(copy.replyRef!.imageAttachment, isNull);
   });
 
+  test('old reply preview without message id hydrates text-only reply ref', () {
+    final copy = ChatMessage.fromJson({
+      'id': 'm2',
+      'role': 'user',
+      'state': 'completed',
+      'parts': [
+        {'type': 'text', 'text': 'reply'},
+      ],
+      'createdAt': '2026-05-30T00:00:00.000Z',
+      'updatedAt': '2026-05-30T00:00:00.000Z',
+      'replyPreview': 'legacy preview',
+    });
+
+    expect(copy.replyRef, isNotNull);
+    expect(copy.replyRef!.messageId, '');
+    expect(copy.replyRef!.textPreview, 'legacy preview');
+    expect(copy.replyRef!.imageAttachment, isNull);
+  });
+
   test('session pin and unread metadata round trips with old defaults', () {
     final now = DateTime.utc(2026, 5, 30);
     final document = ChatSessionDocument(
