@@ -9,7 +9,6 @@ import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/presentation/image_viewer_screen.dart';
 import 'package:newchat/features/chat/presentation/widgets/chat_input_bar.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
-import 'package:newchat/features/demo/demo_data.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -77,10 +76,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final session =
         widget.sessionId == 'new' || _session?.id == widget.sessionId
             ? baseSession
-            : baseSession.copyWith(id: widget.sessionId);
+            : _withSessionId(baseSession, widget.sessionId);
     final isStreaming = session.messages.any(
       (message) => message.state == MessageState.streaming,
     );
+    final canRetry = _hasRetryableTrailingAssistant(session);
     _scheduleScrollIfMessagesChanged(session);
 
     return Scaffold(
@@ -155,6 +155,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   message: session.messages[index],
                   onReply: _setReplyQuote,
                   onEdit: _showEditMessageDialog,
+                  onImageEdit: _showImageEditPromptDialog,
                   onImageTap: (attachment) => _openImageViewer(
                     attachment: attachment,
                     imageMessage: session.messages[index],
@@ -185,6 +186,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       },
                       icon: const Icon(Icons.stop_circle_outlined),
                       label: Text(l10n.stop),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ),
+              if (canRetry)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _isSending ? null : _retryLastAssistant,
+                      icon: const Icon(Icons.replay_outlined),
+                      label: const Text('Continue'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
@@ -443,6 +459,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Future<void> _showImageEditPromptDialog(ChatMessage imageMessage) async {
+    final controller = TextEditingController(
+      text: _nearestPromptFor(imageMessage),
+    );
+    final prompt = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit image prompt'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            labelText: 'Prompt',
+            alignLabelWithHint: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Generate'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (prompt == null || prompt.isEmpty) {
+      return;
+    }
+    await _sendImageEditPrompt(imageMessage: imageMessage, prompt: prompt);
+  }
+
   Future<void> _sendImageEditPrompt({
     required ChatMessage imageMessage,
     required String prompt,
@@ -487,6 +541,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     }
     return imageMessage.fullText.trim();
+  }
+
+  Future<void> _retryLastAssistant() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isSending = true);
+    try {
+      final chatController = ref.read(chatControllerProvider);
+      await chatController.retryLastFailed();
+      if (mounted) {
+        setState(() {
+          _session = chatController.currentDocument;
+          _title = _session?.title ?? _title;
+          _providerId = _session?.providerId ?? _providerId;
+          _modelId = _session?.modelId ?? _modelId;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
   }
 
   AttachmentRef? _firstImageAttachment(ChatMessage message) {
@@ -660,6 +737,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
   }
+}
+
+bool _hasRetryableTrailingAssistant(ChatSessionDocument session) {
+  if (session.messages.length < 2) {
+    return false;
+  }
+  final last = session.messages.last;
+  return last.role == ChatRole.assistant &&
+      (last.state == MessageState.failed ||
+          last.state == MessageState.cancelled ||
+          last.state == MessageState.interrupted);
+}
+
+ChatSessionDocument _withSessionId(
+  ChatSessionDocument session,
+  String sessionId,
+) {
+  return ChatSessionDocument(
+    id: sessionId,
+    title: session.title,
+    providerId: session.providerId,
+    modelId: session.modelId,
+    systemPrompt: session.systemPrompt,
+    messages: session.messages,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    schemaVersion: session.schemaVersion,
+    contextSummary: session.contextSummary,
+    contextSummaryUpdatedAt: session.contextSummaryUpdatedAt,
+    isPinned: session.isPinned,
+    pinnedAt: session.pinnedAt,
+    isUnread: session.isUnread,
+  );
 }
 
 enum _ChatAction { rename, systemPrompt, switchModel, delete }

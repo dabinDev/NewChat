@@ -160,6 +160,46 @@ void main() {
     expect(inputBottom, lessThan(420));
   });
 
+  testWidgets('retryable assistant state shows continue control',
+      (tester) async {
+    final session = demoChatSession.copyWith(
+      id: 'retry-demo',
+      messages: [
+        ChatMessage(
+          id: 'user-1',
+          role: ChatRole.user,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('hello')],
+          createdAt: DateTime.utc(2026, 5, 30),
+          updatedAt: DateTime.utc(2026, 5, 30),
+        ),
+        ChatMessage(
+          id: 'assistant-1',
+          role: ChatRole.assistant,
+          state: MessageState.interrupted,
+          parts: const [MessagePart.text('partial')],
+          createdAt: DateTime.utc(2026, 5, 30, 1),
+          updatedAt: DateTime.utc(2026, 5, 30, 1),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ProviderScope(
+          child: ChatScreen(
+            sessionId: session.id,
+            demoSession: session,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Continue'), findsOneWidget);
+  });
+
   testWidgets('session list shows pinned sessions first with pin icon',
       (tester) async {
     final repository = InMemorySessionRepository();

@@ -183,6 +183,44 @@ void main() {
     expect(find.text('Edited'), findsOneWidget);
   });
 
+  testWidgets('image message exposes edit image action', (tester) async {
+    final message = ChatMessage(
+      id: 'assistant-image',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: [
+        MessagePart.image(
+          const AttachmentRef(
+            id: 'image-1',
+            localPath: '/missing/image.png',
+            mimeType: 'image/png',
+          ),
+        ),
+      ],
+      createdAt: DateTime.utc(2026, 5, 30),
+      updatedAt: DateTime.utc(2026, 5, 30),
+    );
+    ChatMessage? imageEdited;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(
+            message: message,
+            onImageEdit: (message) => imageEdited = message,
+          ),
+        ),
+      ),
+    );
+
+    await _longPressBubble(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit Image'));
+    await tester.pumpAndSettle();
+
+    expect(imageEdited, same(message));
+  });
+
   testWidgets('sent bubble quote shows role text and image thumbnail',
       (tester) async {
     final message = _message(

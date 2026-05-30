@@ -12,12 +12,14 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.onReply,
     this.onEdit,
+    this.onImageEdit,
     this.onImageTap,
   });
 
   final ChatMessage message;
   final ValueChanged<ChatMessage>? onReply;
   final ValueChanged<ChatMessage>? onEdit;
+  final ValueChanged<ChatMessage>? onImageEdit;
   final ValueChanged<AttachmentRef>? onImageTap;
 
   bool get _isUser => message.role == ChatRole.user;
@@ -29,6 +31,10 @@ class MessageBubble extends StatelessWidget {
       message.state == MessageState.completed &&
       message.role == ChatRole.user &&
       onEdit != null;
+  bool get _canEditImage =>
+      message.state == MessageState.completed &&
+      message.parts.any((part) => part.type == MessagePartType.image) &&
+      onImageEdit != null;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +59,7 @@ class MessageBubble extends StatelessWidget {
             constraints: BoxConstraints(maxWidth: maxBubbleWidth),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onLongPress: _canReply || _canEdit
+              onLongPress: _canReply || _canEdit || _canEditImage
                   ? () => _showMessageActions(context)
                   : null,
               child: Container(
@@ -133,6 +139,13 @@ class MessageBubble extends StatelessWidget {
                 title: const Text('Edit'),
                 onTap: () => Navigator.of(context).pop(_MessageAction.edit),
               ),
+            if (_canEditImage)
+              ListTile(
+                leading: const Icon(Icons.auto_fix_high_outlined),
+                title: const Text('Edit Image'),
+                onTap: () =>
+                    Navigator.of(context).pop(_MessageAction.editImage),
+              ),
           ],
         ),
       ),
@@ -143,13 +156,15 @@ class MessageBubble extends StatelessWidget {
         onReply?.call(message);
       case _MessageAction.edit:
         onEdit?.call(message);
+      case _MessageAction.editImage:
+        onImageEdit?.call(message);
       case null:
         break;
     }
   }
 }
 
-enum _MessageAction { reply, edit }
+enum _MessageAction { reply, edit, editImage }
 
 List<MessagePart> _mergedAdjacentTextParts(List<MessagePart> parts) {
   final merged = <MessagePart>[];
