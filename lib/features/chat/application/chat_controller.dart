@@ -11,6 +11,8 @@ import 'package:newchat/features/chat/domain/chat_provider.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 final chatControllerProvider = Provider<ChatController>((ref) {
@@ -707,8 +709,8 @@ bool _hasImageAttachments(ChatMessage message) =>
     message.parts.any((part) => part.type == MessagePartType.image);
 
 Future<Directory> _defaultImageOutputDirectory() async {
-  return Directory(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}newchat-generated-images');
+  final documentsDirectory = await getApplicationDocumentsDirectory();
+  return Directory(p.join(documentsDirectory.path, 'generated-images'));
 }
 
 String _extensionForMimeType(String mimeType) {
