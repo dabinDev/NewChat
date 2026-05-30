@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +87,45 @@ void main() {
     expect(find.textContaining('Very long planning notes'), findsOneWidget);
   });
 
+  testWidgets('chat screen exposes a back button', (tester) async {
+    final session = demoChatSession.copyWith(id: 'session-with-back');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ProviderScope(
+          child: ChatScreen(
+            sessionId: session.id,
+            demoSession: session,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byTooltip('Back'), findsOneWidget);
+  });
+
+  testWidgets('real chat session does not show demo content while loading',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ProviderScope(
+          overrides: [
+            sessionRepositoryProvider.overrideWithValue(
+              _NeverCompletingSessionRepository(),
+            ),
+          ],
+          child: const ChatScreen(sessionId: 'real-session'),
+        ),
+      ),
+    );
+
+    expect(find.text('Draft a concise rollout checklist.'), findsNothing);
+  });
+
   testWidgets('chat input stays above keyboard inset', (tester) async {
     final session = demoChatSession.copyWith(
       messages: const [],
@@ -116,4 +157,20 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(inputBottom, lessThan(420));
   });
+}
+
+class _NeverCompletingSessionRepository implements SessionRepository {
+  @override
+  Future<void> deleteSession(String id) => Future<void>.value();
+
+  @override
+  Future<ChatSessionDocument?> loadDocument(String id) =>
+      Completer<ChatSessionDocument?>().future;
+
+  @override
+  Future<List<ChatSessionMeta>> listMetas() => Future.value(const []);
+
+  @override
+  Future<void> saveDocument(ChatSessionDocument document) =>
+      Future<void>.value();
 }

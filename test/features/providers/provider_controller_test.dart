@@ -234,6 +234,35 @@ void main() {
     expect(models.map((model) => model.id), contains('gpt-4o'));
   });
 
+  test('fetchModels treats unknown OpenAI models as image capable', () async {
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: const [],
+    );
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: FakeProviderKeyStore(),
+      dio: Dio()
+        ..httpClientAdapter = _ModelListAdapter(
+          body: {
+            'data': [
+              {'id': 'gpt-5.5'},
+            ],
+          },
+        ),
+    );
+
+    final result = await controller.fetchModelsWithConfig(
+      provider: _provider(id: 'provider-1'),
+      apiKeyInput: 'sk-fetch-models',
+    );
+
+    final models = await repository.listModels();
+    final fetched = models.singleWhere((model) => model.id == 'gpt-5.5');
+    expect(result.isSuccess, isTrue);
+    expect(fetched.supportsImages, isTrue);
+  });
+
   test('fetchModels masks API key in diagnostics', () async {
     final repository = InMemoryProviderRepository(
       providers: [_provider(id: 'provider-1')],

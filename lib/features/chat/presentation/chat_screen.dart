@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/core/routing/app_back_button.dart';
 import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
@@ -41,7 +43,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    final session = widget.demoSession ?? demoChatSession;
+    final session = widget.demoSession ?? _emptySession(widget.sessionId);
     _title = session.title;
     _providerId = session.providerId;
     _modelId = session.modelId;
@@ -68,7 +70,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final l10n = AppLocalizations.of(context);
     final models = ref.watch(modelListProvider).valueOrNull ?? const [];
     final model = _firstModelWithId(models, _modelId);
-    final baseSession = _session ?? widget.demoSession ?? demoChatSession;
+    final baseSession =
+        _session ?? widget.demoSession ?? _emptySession(widget.sessionId);
     final session =
         widget.sessionId == 'new' || _session?.id == widget.sessionId
             ? baseSession
@@ -81,6 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 64,
+        leading: const AppBackButton(fallbackPath: AppRoutes.home),
         title: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
           child: Column(
@@ -449,3 +453,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 }
 
 enum _ChatAction { rename, systemPrompt, switchModel, delete }
+
+ChatSessionDocument _emptySession(String sessionId) {
+  final now = DateTime.now().toUtc();
+  return ChatSessionDocument(
+    id: sessionId,
+    title: '',
+    providerId: '',
+    modelId: '',
+    systemPrompt: '',
+    messages: const [],
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: AppConstants.schemaVersion,
+  );
+}

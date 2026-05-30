@@ -252,6 +252,9 @@ class ChatController extends ChangeNotifier {
           return;
         }
       }
+      if (_isCurrentGeneration(document.id, assistant.id)) {
+        await _markAssistantCompleted(assistant.id);
+      }
     } on _ChatRequestValidationException catch (error) {
       if (_isCurrentGeneration(document.id, assistant.id)) {
         await _markAssistantFailed(assistant.id, error.message);

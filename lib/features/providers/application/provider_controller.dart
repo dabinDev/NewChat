@@ -181,7 +181,7 @@ class ProviderController {
                   displayName: model.displayName,
                   protocol: provider.protocol,
                   supportsStreaming: model.supportsStreaming,
-                  supportsImages: existing.supportsImages,
+                  supportsImages: model.supportsImages,
                   contextLength: model.contextLength ?? existing.contextLength,
                 ),
         );
@@ -483,9 +483,16 @@ List<ModelConfig> _parseModelList(
         displayName: id,
         protocol: protocol,
         supportsStreaming: true,
-        supportsImages: _looksVisionCapable(id),
+        supportsImages: _supportsImagesByDefault(id, protocol),
       ),
   ];
+}
+
+bool _supportsImagesByDefault(String modelId, ProviderProtocol protocol) {
+  if (protocol == ProviderProtocol.openai) {
+    return true;
+  }
+  return _looksVisionCapable(modelId);
 }
 
 bool _looksVisionCapable(String modelId) {

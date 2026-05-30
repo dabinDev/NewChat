@@ -66,6 +66,28 @@ void main() {
     expect(assistant.parts.last.text, 'network failed');
   });
 
+  test('stream ending without done completes assistant instead of hanging',
+      () async {
+    final repository = InMemorySessionRepository();
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider([
+        const ChatStreamDelta('partial answer'),
+      ]),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(text: 'hi', attachments: const []);
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.fullText, 'partial answer');
+    expect(assistant.state, MessageState.completed);
+  });
+
   test('loadSession loads existing session', () async {
     final repository = InMemorySessionRepository();
     final document = _document(id: 'session-1', title: 'Existing Chat');
