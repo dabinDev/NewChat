@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
@@ -160,6 +161,44 @@ void main() {
     expect(find.text('Could you clarify?'), findsOneWidget);
     expect(find.text('Could '), findsNothing);
     expect(find.text('you '), findsNothing);
+  });
+
+  testWidgets('user markdown text uses readable bubble foreground color',
+      (tester) async {
+    final message = ChatMessage(
+      id: 'user-message',
+      role: ChatRole.user,
+      state: MessageState.completed,
+      parts: const [
+        MessagePart.text('Hello **friend**'),
+      ],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );
+    const theme = ColorScheme.light(
+      primary: Color(0xFF123C44),
+      onPrimary: Color(0xFFF7F4EC),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(colorScheme: theme),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: MessageBubble(message: message),
+        ),
+      ),
+    );
+
+    final markdown = tester.widget<MarkdownBody>(
+      find.descendant(
+        of: find.byType(MessageBubble),
+        matching: find.byType(MarkdownBody),
+      ),
+    );
+
+    expect(markdown.styleSheet?.p?.color, theme.onPrimary);
   });
 
   testWidgets('empty streaming assistant bubble is compact', (tester) async {

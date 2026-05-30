@@ -90,6 +90,7 @@ class MessageBubble extends StatelessWidget {
                       for (final part in parts)
                         _MessagePartView(
                           part: part,
+                          foreground: foreground,
                           onImageTap: onImageTap,
                         ),
                       if (message.state == MessageState.streaming &&
@@ -325,17 +326,22 @@ String _roleLabel(AppLocalizations l10n, ChatRole? role) {
 class _MessagePartView extends StatelessWidget {
   const _MessagePartView({
     required this.part,
+    required this.foreground,
     required this.onImageTap,
   });
 
   final MessagePart part;
+  final Color foreground;
   final ValueChanged<AttachmentRef>? onImageTap;
 
   @override
   Widget build(BuildContext context) {
     switch (part.type) {
       case MessagePartType.text:
-        return _MarkdownWithMath(data: part.text ?? '');
+        return _MarkdownWithMath(
+          data: part.text ?? '',
+          foreground: foreground,
+        );
       case MessagePartType.image:
         return _ImageThumbnail(
           attachment: part.attachment!,
@@ -349,7 +355,9 @@ class _MessagePartView extends StatelessWidget {
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             part.text ?? '',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: foreground.withValues(alpha: 0.78),
+                ),
           ),
         );
     }
@@ -357,9 +365,13 @@ class _MessagePartView extends StatelessWidget {
 }
 
 class _MarkdownWithMath extends StatelessWidget {
-  const _MarkdownWithMath({required this.data});
+  const _MarkdownWithMath({
+    required this.data,
+    required this.foreground,
+  });
 
   final String data;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
@@ -378,6 +390,7 @@ class _MarkdownWithMath extends StatelessWidget {
         child: SelectableText(
           mathMatch.group(1)!.trim(),
           style: theme.textTheme.bodyMedium?.copyWith(
+            color: foreground,
             fontFamily: 'monospace',
           ),
         ),
@@ -387,21 +400,57 @@ class _MarkdownWithMath extends StatelessWidget {
     return MarkdownBody(
       data: data,
       selectable: true,
-      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-        codeblockDecoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-      ),
+      styleSheet: _bubbleMarkdownStyleSheet(theme, foreground),
       builders: {
-        'code': _CodeElementBuilder(),
+        'code': _CodeElementBuilder(foreground: foreground),
       },
     );
   }
 }
 
+MarkdownStyleSheet _bubbleMarkdownStyleSheet(
+  ThemeData theme,
+  Color foreground,
+) {
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  final body = theme.textTheme.bodyMedium?.copyWith(color: foreground);
+  final bodyLarge = theme.textTheme.bodyLarge?.copyWith(color: foreground);
+  final title = theme.textTheme.titleMedium?.copyWith(color: foreground);
+  final titleLarge = theme.textTheme.titleLarge?.copyWith(color: foreground);
+  final headline = theme.textTheme.headlineSmall?.copyWith(
+    color: foreground,
+  );
+  return base.copyWith(
+    p: body,
+    code: body?.copyWith(
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      fontFamily: 'monospace',
+      fontSize: (body.fontSize ?? 14) * 0.85,
+    ),
+    h1: headline,
+    h2: titleLarge,
+    h3: title,
+    h4: bodyLarge,
+    h5: bodyLarge,
+    h6: bodyLarge,
+    blockquote: body,
+    img: body,
+    listBullet: body,
+    tableBody: body,
+    tableHead: body?.copyWith(fontWeight: FontWeight.w700),
+    codeblockDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: theme.colorScheme.outlineVariant),
+    ),
+  );
+}
+
 class _CodeElementBuilder extends MarkdownElementBuilder {
+  _CodeElementBuilder({required this.foreground});
+
+  final Color foreground;
+
   @override
   Widget? visitElementAfter(element, TextStyle? preferredStyle) {
     final className = element.attributes['class'] ?? '';
@@ -426,7 +475,8 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
                         padding: const EdgeInsets.all(12),
                         child: SelectableText(
                           code,
-                          style: const TextStyle(
+                          style: TextStyle(
+                            color: foreground,
                             fontFamily: 'monospace',
                             fontSize: 13,
                           ),
@@ -437,7 +487,8 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
                         language: language,
                         theme: githubTheme,
                         padding: const EdgeInsets.all(12),
-                        textStyle: const TextStyle(
+                        textStyle: TextStyle(
+                          color: foreground,
                           fontFamily: 'monospace',
                           fontSize: 13,
                         ),

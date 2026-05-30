@@ -721,6 +721,56 @@ make the background darker''';
     expect(failed.error.statusCode, 503);
   });
 
+  test('OpenAIProvider treats 504 HTML image responses as sanitized timeout',
+      () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeHttpClientAdapter(
+        error: DioException(
+          requestOptions: RequestOptions(path: '/v1/images/generations'),
+          response: Response<String>(
+            requestOptions: RequestOptions(path: '/v1/images/generations'),
+            statusCode: 504,
+            data: '<html><body><h1>504 Gateway Timeout</h1></body></html>',
+          ),
+          type: DioExceptionType.badResponse,
+        ),
+      );
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: const ModelConfig(
+              id: 'gpt-image-2',
+              displayName: 'GPT Image 2',
+              protocol: ProviderProtocol.openai,
+              supportsStreaming: false,
+              supportsImages: true,
+            ),
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('draw a red kite')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(events, hasLength(1));
+    final failed = events.single as ChatStreamFailed;
+    expect(failed.error.type, ChatErrorType.timeout);
+    expect(failed.error.statusCode, 504);
+    expect(failed.error.message, 'OpenAI request timed out. (504)');
+    expect(failed.error.message, isNot(contains('<html>')));
+  });
+
   test('OpenAIProvider posts image attachments as data URLs', () async {
     final adapter = _FakeHttpClientAdapter(
       streamChunks: [Uint8List.fromList(utf8.encode('data: [DONE]\n\n'))],

@@ -116,10 +116,17 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> loadSession(String sessionId) async {
-    _throwIfGenerationActive();
+    final activeSessionId = _streamingSessionId;
+    if (_generationInProgress && activeSessionId != sessionId) {
+      _throwIfGenerationActive();
+    }
     final document = await _repository.loadDocument(sessionId);
     if (document == null) {
       throw StateError('Chat session not found: $sessionId');
+    }
+    if (_generationInProgress && activeSessionId == sessionId) {
+      _setCurrentDocument(document);
+      return;
     }
     final restored = _interruptTrailingStreamingAssistant(document);
     _setCurrentDocument(restored);

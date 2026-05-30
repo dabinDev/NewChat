@@ -648,6 +648,9 @@ ChatErrorType _chatErrorTypeFromDio(DioException error) {
   if (statusCode == 404) {
     return ChatErrorType.notFound;
   }
+  if (statusCode == 408 || statusCode == 504) {
+    return ChatErrorType.timeout;
+  }
   if (statusCode != null && statusCode >= 400 && statusCode < 500) {
     return ChatErrorType.badRequest;
   }
@@ -703,7 +706,17 @@ String? _safeResponseMessage(Object? data) {
   if (normalized.isEmpty) {
     return null;
   }
+  if (_looksLikeHtml(normalized)) {
+    return null;
+  }
   return normalized.length <= 180
       ? normalized
       : '${normalized.substring(0, 180)}...';
+}
+
+bool _looksLikeHtml(String value) {
+  final lower = value.toLowerCase();
+  return lower.startsWith('<!doctype html') ||
+      lower.startsWith('<html') ||
+      RegExp(r'<\s*(html|head|body|title|h1|div|span|p)\b').hasMatch(lower);
 }

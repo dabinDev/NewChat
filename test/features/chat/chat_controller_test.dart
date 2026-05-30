@@ -1038,6 +1038,40 @@ make it blue''',
     await events.close();
   });
 
+  test('loadSession keeps active same-session generation running', () async {
+    final repository = InMemorySessionRepository();
+    final events = StreamController<ChatStreamEvent>();
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final sessionId = controller.currentDocument!.id;
+    final sendFuture =
+        controller.sendMessage(text: 'slow task', attachments: const []);
+    await pumpEventQueue();
+
+    await controller.loadSession(sessionId);
+
+    final streamingAssistant = controller.currentDocument!.messages.last;
+    expect(streamingAssistant.state, MessageState.streaming);
+
+    events
+      ..add(const ChatStreamDelta('finished later'))
+      ..add(const ChatStreamDone());
+    await sendFuture;
+
+    final savedDocument = (await repository.loadDocument(sessionId))!;
+    expect(savedDocument.messages.last.state, MessageState.completed);
+    expect(savedDocument.messages.last.fullText, 'finished later');
+    await events.close();
+  });
+
   test('createSession throws during generation', () async {
     final events = StreamController<ChatStreamEvent>();
     final controller = ChatController(
