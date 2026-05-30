@@ -15,6 +15,9 @@ class ChatSessionMeta {
     required this.updatedAt,
     required this.isDeleted,
     required this.schemaVersion,
+    this.isPinned = false,
+    this.pinnedAt,
+    this.isUnread = false,
   });
 
   final String id;
@@ -26,6 +29,9 @@ class ChatSessionMeta {
   final DateTime updatedAt;
   final bool isDeleted;
   final int schemaVersion;
+  final bool isPinned;
+  final DateTime? pinnedAt;
+  final bool isUnread;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -37,6 +43,9 @@ class ChatSessionMeta {
         'updatedAt': updatedAt.toIso8601String(),
         'isDeleted': isDeleted,
         'schemaVersion': schemaVersion,
+        'isPinned': isPinned,
+        'pinnedAt': pinnedAt?.toIso8601String(),
+        'isUnread': isUnread,
       };
 
   factory ChatSessionMeta.fromJson(Map<String, Object?> json) =>
@@ -50,6 +59,11 @@ class ChatSessionMeta {
         updatedAt: DateTime.parse(json['updatedAt']! as String),
         isDeleted: json['isDeleted']! as bool,
         schemaVersion: json['schemaVersion']! as int,
+        isPinned: (json['isPinned'] as bool?) ?? false,
+        pinnedAt: json['pinnedAt'] == null
+            ? null
+            : DateTime.parse(json['pinnedAt']! as String),
+        isUnread: (json['isUnread'] as bool?) ?? false,
       );
 }
 
@@ -66,6 +80,9 @@ class ChatSessionDocument {
     required this.schemaVersion,
     this.contextSummary,
     this.contextSummaryUpdatedAt,
+    this.isPinned = false,
+    this.pinnedAt,
+    this.isUnread = false,
   }) : messages = List.unmodifiable(messages);
 
   final String id;
@@ -79,6 +96,9 @@ class ChatSessionDocument {
   final int schemaVersion;
   final String? contextSummary;
   final DateTime? contextSummaryUpdatedAt;
+  final bool isPinned;
+  final DateTime? pinnedAt;
+  final bool isUnread;
 
   ChatSessionMeta get meta => ChatSessionMeta(
         id: id,
@@ -94,6 +114,9 @@ class ChatSessionDocument {
         updatedAt: updatedAt,
         isDeleted: false,
         schemaVersion: schemaVersion,
+        isPinned: isPinned,
+        pinnedAt: pinnedAt,
+        isUnread: isUnread,
       );
 
   Map<String, Object?> toJson() => {
@@ -108,6 +131,9 @@ class ChatSessionDocument {
         'schemaVersion': schemaVersion,
         'contextSummary': contextSummary,
         'contextSummaryUpdatedAt': contextSummaryUpdatedAt?.toIso8601String(),
+        'isPinned': isPinned,
+        'pinnedAt': pinnedAt?.toIso8601String(),
+        'isUnread': isUnread,
       };
 
   factory ChatSessionDocument.fromJson(Map<String, Object?> json) =>
@@ -128,6 +154,11 @@ class ChatSessionDocument {
         contextSummaryUpdatedAt: json['contextSummaryUpdatedAt'] == null
             ? null
             : DateTime.parse(json['contextSummaryUpdatedAt']! as String),
+        isPinned: (json['isPinned'] as bool?) ?? false,
+        pinnedAt: json['pinnedAt'] == null
+            ? null
+            : DateTime.parse(json['pinnedAt']! as String),
+        isUnread: (json['isUnread'] as bool?) ?? false,
       );
 }
 
@@ -152,6 +183,43 @@ class MessageEditEntry {
       );
 }
 
+class MessageReplyRef {
+  const MessageReplyRef({
+    required this.messageId,
+    required this.role,
+    required this.textPreview,
+    required this.createdAt,
+    this.imageAttachment,
+  });
+
+  final String messageId;
+  final ChatRole role;
+  final String textPreview;
+  final AttachmentRef? imageAttachment;
+  final DateTime createdAt;
+
+  Map<String, Object?> toJson() => {
+        'messageId': messageId,
+        'role': role.name,
+        'textPreview': textPreview,
+        'imageAttachment': imageAttachment?.toJson(),
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory MessageReplyRef.fromJson(Map<String, Object?> json) =>
+      MessageReplyRef(
+        messageId: json['messageId']! as String,
+        role: ChatRole.values.byName(json['role']! as String),
+        textPreview: json['textPreview']! as String,
+        imageAttachment: json['imageAttachment'] == null
+            ? null
+            : AttachmentRef.fromJson(
+                json['imageAttachment']! as Map<String, Object?>,
+              ),
+        createdAt: DateTime.parse(json['createdAt']! as String),
+      );
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -160,11 +228,21 @@ class ChatMessage {
     required List<MessagePart> parts,
     required this.createdAt,
     required this.updatedAt,
-    this.replyToMessageId,
-    this.replyPreview,
+    String? replyToMessageId,
+    String? replyPreview,
+    MessageReplyRef? replyRef,
     this.editedAt,
     List<MessageEditEntry> editHistory = const [],
   })  : parts = List.unmodifiable(parts),
+        replyRef = replyRef ??
+            _legacyReplyRef(
+              messageId: replyToMessageId,
+              textPreview: replyPreview,
+              role: role,
+              createdAt: createdAt,
+            ),
+        replyToMessageId = replyRef?.messageId ?? replyToMessageId,
+        replyPreview = replyRef?.textPreview ?? replyPreview,
         editHistory = List.unmodifiable(editHistory);
 
   final String id;
@@ -173,6 +251,7 @@ class ChatMessage {
   final List<MessagePart> parts;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final MessageReplyRef? replyRef;
   final String? replyToMessageId;
   final String? replyPreview;
   final DateTime? editedAt;
@@ -192,30 +271,54 @@ class ChatMessage {
         'updatedAt': updatedAt.toIso8601String(),
         'replyToMessageId': replyToMessageId,
         'replyPreview': replyPreview,
+        'replyRef': replyRef?.toJson(),
         'editedAt': editedAt?.toIso8601String(),
         'editHistory': editHistory.map((entry) => entry.toJson()).toList(),
       };
 
-  factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
-        id: json['id']! as String,
-        role: ChatRole.values.byName(json['role']! as String),
-        state: MessageState.values.byName(json['state']! as String),
-        parts: (json['parts']! as List<Object?>)
-            .cast<Map<String, Object?>>()
-            .map(MessagePart.fromJson)
-            .toList(),
-        createdAt: DateTime.parse(json['createdAt']! as String),
-        updatedAt: DateTime.parse(json['updatedAt']! as String),
-        replyToMessageId: json['replyToMessageId'] as String?,
-        replyPreview: json['replyPreview'] as String?,
-        editedAt: json['editedAt'] == null
-            ? null
-            : DateTime.parse(json['editedAt']! as String),
-        editHistory: ((json['editHistory'] as List<Object?>?) ?? [])
-            .cast<Map<String, Object?>>()
-            .map(MessageEditEntry.fromJson)
-            .toList(),
-      );
+  factory ChatMessage.fromJson(Map<String, Object?> json) {
+    final replyRefJson = json['replyRef'];
+    return ChatMessage(
+      id: json['id']! as String,
+      role: ChatRole.values.byName(json['role']! as String),
+      state: MessageState.values.byName(json['state']! as String),
+      parts: (json['parts']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .map(MessagePart.fromJson)
+          .toList(),
+      createdAt: DateTime.parse(json['createdAt']! as String),
+      updatedAt: DateTime.parse(json['updatedAt']! as String),
+      replyToMessageId: json['replyToMessageId'] as String?,
+      replyPreview: json['replyPreview'] as String?,
+      replyRef: replyRefJson == null
+          ? null
+          : MessageReplyRef.fromJson(replyRefJson as Map<String, Object?>),
+      editedAt: json['editedAt'] == null
+          ? null
+          : DateTime.parse(json['editedAt']! as String),
+      editHistory: ((json['editHistory'] as List<Object?>?) ?? [])
+          .cast<Map<String, Object?>>()
+          .map(MessageEditEntry.fromJson)
+          .toList(),
+    );
+  }
+
+  static MessageReplyRef? _legacyReplyRef({
+    required String? messageId,
+    required String? textPreview,
+    required ChatRole role,
+    required DateTime createdAt,
+  }) {
+    if (messageId == null) {
+      return null;
+    }
+    return MessageReplyRef(
+      messageId: messageId,
+      role: role,
+      textPreview: textPreview ?? '',
+      createdAt: createdAt,
+    );
+  }
 }
 
 class MessagePart {

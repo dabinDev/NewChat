@@ -159,6 +159,98 @@ void main() {
     );
   });
 
+  test('message reply ref round trips text and image preview metadata', () {
+    final now = DateTime.utc(2026, 5, 30);
+    final ref = MessageReplyRef(
+      messageId: 'm1',
+      role: ChatRole.assistant,
+      textPreview: 'look at this',
+      imageAttachment: const AttachmentRef(
+        id: 'image-1',
+        localPath: '/tmp/image.png',
+        mimeType: 'image/png',
+      ),
+      createdAt: now,
+    );
+    final message = ChatMessage(
+      id: 'm2',
+      role: ChatRole.user,
+      state: MessageState.completed,
+      parts: const [MessagePart.text('reply')],
+      replyRef: ref,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final copy = ChatMessage.fromJson(message.toJson());
+
+    expect(copy.replyRef!.messageId, 'm1');
+    expect(copy.replyRef!.role, ChatRole.assistant);
+    expect(copy.replyRef!.textPreview, 'look at this');
+    expect(copy.replyRef!.imageAttachment!.id, 'image-1');
+    expect(copy.replyToMessageId, 'm1');
+    expect(copy.replyPreview, 'look at this');
+  });
+
+  test('old reply fields hydrate text-only reply ref', () {
+    final copy = ChatMessage.fromJson({
+      'id': 'm2',
+      'role': 'user',
+      'state': 'completed',
+      'parts': [
+        {'type': 'text', 'text': 'reply'},
+      ],
+      'createdAt': '2026-05-30T00:00:00.000Z',
+      'updatedAt': '2026-05-30T00:00:00.000Z',
+      'replyToMessageId': 'm1',
+      'replyPreview': 'legacy preview',
+    });
+
+    expect(copy.replyRef!.messageId, 'm1');
+    expect(copy.replyRef!.textPreview, 'legacy preview');
+    expect(copy.replyRef!.imageAttachment, isNull);
+  });
+
+  test('session pin and unread metadata round trips with old defaults', () {
+    final now = DateTime.utc(2026, 5, 30);
+    final document = ChatSessionDocument(
+      id: 's1',
+      title: 'Pinned',
+      providerId: 'p1',
+      modelId: 'm1',
+      systemPrompt: '',
+      messages: const [],
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1,
+      isPinned: true,
+      pinnedAt: now,
+      isUnread: true,
+    );
+
+    final copy = ChatSessionDocument.fromJson(document.toJson());
+    expect(copy.isPinned, isTrue);
+    expect(copy.pinnedAt, now);
+    expect(copy.isUnread, isTrue);
+    expect(copy.meta.isPinned, isTrue);
+    expect(copy.meta.isUnread, isTrue);
+
+    final old = ChatSessionDocument.fromJson({
+      'id': 's2',
+      'title': 'Old',
+      'providerId': 'p1',
+      'modelId': 'm1',
+      'systemPrompt': '',
+      'messages': <Object?>[],
+      'createdAt': '2026-05-30T00:00:00.000Z',
+      'updatedAt': '2026-05-30T00:00:00.000Z',
+      'schemaVersion': 1,
+    });
+    expect(old.isPinned, isFalse);
+    expect(old.pinnedAt, isNull);
+    expect(old.isUnread, isFalse);
+  });
+
   test('chat message JSON remains backward compatible', () {
     final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
     final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
