@@ -366,6 +366,7 @@ why?''');
     for (final state in [
       MessageState.cancelled,
       MessageState.interrupted,
+      MessageState.failed,
       MessageState.streaming,
     ]) {
       final repository = InMemorySessionRepository();
