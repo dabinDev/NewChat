@@ -463,12 +463,26 @@ Uri _endpointUri(String rawBaseUrl, String endpointPath) {
 
 ChatError _chatErrorFromDio(DioException error) {
   final statusCode = error.response?.statusCode;
+  final type = _chatErrorTypeFromDio(error);
   return ChatError(
-    type: _chatErrorTypeFromDio(error),
-    message: error.message ?? 'OpenAI request failed.',
+    type: type,
+    message: _safeOpenAiDioMessage(type),
     statusCode: statusCode,
     cause: error,
   );
+}
+
+String _safeOpenAiDioMessage(ChatErrorType type) {
+  return switch (type) {
+    ChatErrorType.authentication => 'OpenAI authentication failed.',
+    ChatErrorType.permission => 'OpenAI request was not permitted.',
+    ChatErrorType.notFound => 'OpenAI endpoint was not found.',
+    ChatErrorType.badRequest => 'OpenAI request was invalid.',
+    ChatErrorType.timeout => 'OpenAI request timed out.',
+    ChatErrorType.network => 'OpenAI network connection failed.',
+    ChatErrorType.cancelled => 'OpenAI request was cancelled.',
+    ChatErrorType.parsing || ChatErrorType.unknown => 'OpenAI request failed.',
+  };
 }
 
 ChatErrorType _chatErrorTypeFromDio(DioException error) {

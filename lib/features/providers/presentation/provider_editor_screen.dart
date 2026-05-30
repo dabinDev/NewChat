@@ -32,6 +32,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   DateTime? _createdAt;
   bool _isSaving = false;
   bool _isTesting = false;
+  bool _isFetchingModels = false;
 
   @override
   void initState() {
@@ -65,6 +66,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('Provider'),
       ),
       body: ListView(
@@ -157,6 +159,12 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
             icon: const Icon(Icons.network_check_outlined),
             label: Text(l10n.testConnection),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isFetchingModels ? null : _fetchModels,
+            icon: const Icon(Icons.sync_outlined),
+            label: const Text('Fetch models'),
+          ),
         ],
       ),
     );
@@ -235,6 +243,36 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     } finally {
       if (mounted) {
         setState(() => _isTesting = false);
+      }
+    }
+  }
+
+  Future<void> _fetchModels() async {
+    final provider = _providerFromFields();
+    setState(() => _isFetchingModels = true);
+    try {
+      final result =
+          await ref.read(providerControllerProvider).fetchModelsWithConfig(
+                provider: provider,
+                apiKeyInput: _apiKeyController.text,
+              );
+      ref.invalidate(modelListProvider);
+      if (!mounted) {
+        return;
+      }
+      final models = await ref.read(providerControllerProvider).listModels();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _ensureSelectedModel(_modelOptionsFor(_protocol, models));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingModels = false);
       }
     }
   }

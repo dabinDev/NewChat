@@ -399,16 +399,18 @@ void main() {
   });
 
   test('OpenAIProvider converts Dio errors to ChatStreamFailed', () async {
+    const rawDioMessage =
+        'This exception was thrown because the response has a status code of 503';
     final dio = Dio()
       ..httpClientAdapter = _FakeHttpClientAdapter(
         error: DioException(
           requestOptions: RequestOptions(path: '/v1/chat/completions'),
           response: Response<void>(
             requestOptions: RequestOptions(path: '/v1/chat/completions'),
-            statusCode: 401,
+            statusCode: 503,
           ),
           type: DioExceptionType.badResponse,
-          message: 'Unauthorized',
+          message: rawDioMessage,
         ),
       );
     final provider = OpenAIProvider(
@@ -434,7 +436,10 @@ void main() {
         .toList();
 
     expect(events, hasLength(1));
-    expect(events.single, isA<ChatStreamFailed>());
+    final failed = events.single as ChatStreamFailed;
+    expect(failed.error.message, isNot(contains(rawDioMessage)));
+    expect(failed.error.message, 'OpenAI request failed.');
+    expect(failed.error.statusCode, 503);
   });
 
   test('OpenAIProvider posts image attachments as data URLs', () async {

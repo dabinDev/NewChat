@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/core/errors/chat_error.dart';
@@ -199,6 +201,66 @@ void main() {
     expect(result.message, contains('[masked]'));
     expect(result.message, contains('(401)'));
   });
+
+  test('fetchModels saves remote models for provider protocol', () async {
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [_model('gpt-4o-mini', ProviderProtocol.openai)],
+    );
+    final keyStore = FakeProviderKeyStore();
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: keyStore,
+      dio: Dio()
+        ..httpClientAdapter = _ModelListAdapter(
+          body: {
+            'data': [
+              {'id': 'gpt-4.1-mini'},
+              {'id': 'gpt-4o'},
+            ],
+          },
+        ),
+    );
+
+    final result = await controller.fetchModelsWithConfig(
+      provider: _provider(id: 'provider-1'),
+      apiKeyInput: 'sk-fetch-models',
+    );
+
+    final models = await repository.listModels();
+    expect(result.isSuccess, isTrue);
+    expect(result.importedCount, 2);
+    expect(models.map((model) => model.id), contains('gpt-4.1-mini'));
+    expect(models.map((model) => model.id), contains('gpt-4o'));
+  });
+
+  test('fetchModels masks API key in diagnostics', () async {
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [_model('gpt-4o-mini', ProviderProtocol.openai)],
+    );
+    final keyStore = FakeProviderKeyStore();
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: keyStore,
+      dio: Dio()
+        ..httpClientAdapter = _ModelListAdapter(
+          error: DioException(
+            requestOptions: RequestOptions(path: '/v1/models'),
+            type: DioExceptionType.badResponse,
+            message: 'bad key sk-fetch-models',
+          ),
+        ),
+    );
+
+    final result = await controller.fetchModelsWithConfig(
+      provider: _provider(id: 'provider-1'),
+      apiKeyInput: 'sk-fetch-models',
+    );
+
+    expect(result.isSuccess, isFalse);
+    expect(result.message, isNot(contains('sk-fetch-models')));
+  });
 }
 
 class RecordingChatProvider implements ChatProvider {
@@ -268,3 +330,37 @@ ModelConfig _model(String id, ProviderProtocol protocol) => ModelConfig(
       supportsStreaming: true,
       supportsImages: true,
     );
+
+class _ModelListAdapter implements HttpClientAdapter {
+  _ModelListAdapter({
+    this.body,
+    this.error,
+  });
+
+  final Object? body;
+  final DioException? error;
+  RequestOptions? lastOptions;
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastOptions = options;
+    final error = this.error;
+    if (error != null) {
+      throw error;
+    }
+    return ResponseBody.fromString(
+      body == null ? '{}' : jsonEncode(body),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+}

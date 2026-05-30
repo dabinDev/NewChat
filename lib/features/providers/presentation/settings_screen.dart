@@ -21,6 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const BackButton(),
         title: Text(l10n.settings),
       ),
       body: ListView(

@@ -18,6 +18,11 @@ typedef ChatProviderFactory = ChatProvider Function(
   Future<String?> Function(String providerId) readApiKey,
 );
 
+typedef ModelFetcher = Future<List<ModelConfig>> Function(
+  ProviderConfig provider,
+  String apiKey,
+);
+
 final providerRepositoryProvider = Provider<ProviderRepository>((ref) {
   return PersistentProviderRepository(ref.watch(appDatabaseProvider));
 });
@@ -66,9 +71,11 @@ class ProviderController {
     required Dio dio,
     ChatProviderFactory? openAiProviderFactory,
     ChatProviderFactory? claudeProviderFactory,
+    ModelFetcher? modelFetcher,
   })  : _repository = repository,
         _keyStore = keyStore,
         _dio = dio,
+        _modelFetcher = modelFetcher,
         _openAiProviderFactory = openAiProviderFactory ??
             ((dio, readApiKey) => OpenAIProvider(
                   dio: dio,
@@ -83,6 +90,7 @@ class ProviderController {
   final ProviderRepository _repository;
   final ProviderKeyStore _keyStore;
   final Dio _dio;
+  final ModelFetcher? _modelFetcher;
   final ChatProviderFactory _openAiProviderFactory;
   final ChatProviderFactory _claudeProviderFactory;
 
@@ -137,6 +145,58 @@ class ProviderController {
 
   Future<void> saveModel(ModelConfig model) => _repository.saveModel(model);
   Future<void> deleteModel(String modelId) => _repository.deleteModel(modelId);
+
+  Future<ProviderModelFetchResult> fetchModelsWithConfig({
+    required ProviderConfig provider,
+    required String apiKeyInput,
+  }) async {
+    try {
+      final validationError = await _validateModelFetchFields(
+        provider: provider,
+        apiKeyInput: apiKeyInput,
+      );
+      if (validationError != null) {
+        return ProviderModelFetchResult.failure(validationError);
+      }
+
+      final trimmedApiKey = apiKeyInput.trim();
+      final resolvedApiKey = trimmedApiKey.isNotEmpty
+          ? trimmedApiKey
+          : await _keyStore.readProviderKey(provider.id);
+      final fetched = await (_modelFetcher ?? _fetchRemoteModels)(
+        provider,
+        resolvedApiKey!,
+      );
+      final existingModels = {
+        for (final model in await _repository.listModels()) model.id: model,
+      };
+
+      for (final model in fetched) {
+        final existing = existingModels[model.id];
+        await _repository.saveModel(
+          existing == null
+              ? model
+              : ModelConfig(
+                  id: model.id,
+                  displayName: model.displayName,
+                  protocol: provider.protocol,
+                  supportsStreaming: model.supportsStreaming,
+                  supportsImages: existing.supportsImages,
+                  contextLength: model.contextLength ?? existing.contextLength,
+                ),
+        );
+      }
+
+      return ProviderModelFetchResult.success(
+        'Fetched ${fetched.length} models.',
+        fetched,
+      );
+    } on Object catch (error) {
+      return ProviderModelFetchResult.failure(
+        _safeDiagnostic('Fetch models failed.', [apiKeyInput], error),
+      );
+    }
+  }
 
   Future<ProviderConnectionTestResult> testConnection({
     required String providerId,
@@ -236,6 +296,44 @@ class ProviderController {
     return null;
   }
 
+  Future<String?> _validateModelFetchFields({
+    required ProviderConfig provider,
+    required String apiKeyInput,
+  }) async {
+    final baseUrl = Uri.tryParse(provider.baseUrl.trim());
+    if (baseUrl == null || !baseUrl.hasScheme || baseUrl.host.isEmpty) {
+      return 'Base URL must be a valid absolute URL.';
+    }
+    final key = apiKeyInput.trim().isNotEmpty
+        ? apiKeyInput.trim()
+        : await _keyStore.readProviderKey(provider.id);
+    if (key == null || key.trim().isEmpty) {
+      return 'API key is missing.';
+    }
+    return null;
+  }
+
+  Future<List<ModelConfig>> _fetchRemoteModels(
+    ProviderConfig provider,
+    String apiKey,
+  ) async {
+    final response = await _dio.getUri<Object?>(
+      _endpointUri(provider.baseUrl, '/v1/models'),
+      options: Options(
+        headers: switch (provider.protocol) {
+          ProviderProtocol.openai => {
+              'Authorization': 'Bearer ${apiKey.trim()}',
+            },
+          ProviderProtocol.claude => {
+              'x-api-key': apiKey.trim(),
+              'anthropic-version': '2023-06-01',
+            },
+        },
+      ),
+    );
+    return _parseModelList(response.data, provider.protocol);
+  }
+
   ChatProvider _chatProviderFor(
     ProviderProtocol protocol,
     Future<String?> Function(String providerId) readApiKey,
@@ -289,6 +387,20 @@ class ProviderConnectionTestResult {
   final String message;
 }
 
+class ProviderModelFetchResult {
+  const ProviderModelFetchResult.success(this.message, this.models)
+      : isSuccess = true;
+  const ProviderModelFetchResult.failure(this.message)
+      : isSuccess = false,
+        models = const [];
+
+  final bool isSuccess;
+  final String message;
+  final List<ModelConfig> models;
+
+  int get importedCount => models.length;
+}
+
 class ResolvingChatProvider implements ChatProvider {
   ResolvingChatProvider({
     required Dio dio,
@@ -315,4 +427,72 @@ class ResolvingChatProvider implements ChatProvider {
       ProviderProtocol.claude => _claudeProvider,
     };
   }
+}
+
+Uri _endpointUri(String rawBaseUrl, String endpointPath) {
+  final baseUri = Uri.parse(rawBaseUrl.trim());
+  final baseSegments =
+      baseUri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  final endpointSegments =
+      endpointPath.split('/').where((segment) => segment.isNotEmpty).toList();
+  if (baseSegments.isNotEmpty &&
+      endpointSegments.isNotEmpty &&
+      baseSegments.last == endpointSegments.first) {
+    baseSegments.removeLast();
+  }
+  return baseUri.replace(
+    pathSegments: [...baseSegments, ...endpointSegments],
+    query: null,
+    fragment: null,
+  );
+}
+
+List<ModelConfig> _parseModelList(
+  Object? data,
+  ProviderProtocol protocol,
+) {
+  final ids = <String>{};
+  if (data is Map<String, Object?>) {
+    final modelData = data['data'];
+    if (modelData is List) {
+      for (final item in modelData) {
+        if (item is Map) {
+          final id = item['id'];
+          if (id is String && id.trim().isNotEmpty) {
+            ids.add(id.trim());
+          }
+        } else if (item is String && item.trim().isNotEmpty) {
+          ids.add(item.trim());
+        }
+      }
+    }
+    final models = data['models'];
+    if (models is List) {
+      for (final item in models) {
+        if (item is String && item.trim().isNotEmpty) {
+          ids.add(item.trim());
+        }
+      }
+    }
+  }
+
+  return [
+    for (final id in ids)
+      ModelConfig(
+        id: id,
+        displayName: id,
+        protocol: protocol,
+        supportsStreaming: true,
+        supportsImages: _looksVisionCapable(id),
+      ),
+  ];
+}
+
+bool _looksVisionCapable(String modelId) {
+  final lower = modelId.toLowerCase();
+  return lower.contains('vision') ||
+      lower.contains('gpt-4o') ||
+      lower.contains('claude-3') ||
+      lower.contains('claude-sonnet') ||
+      lower.contains('claude-opus');
 }

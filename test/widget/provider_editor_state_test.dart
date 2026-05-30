@@ -228,6 +228,66 @@ void main() {
 
     expect(find.text('local-model'), findsOneWidget);
   });
+
+  testWidgets('fetch models button imports models into repository',
+      (tester) async {
+    final keyStore = _RecordingKeyStore();
+    final repository = _RecordingProviderRepository(
+      models: const [
+        ModelConfig(
+          id: 'gpt-4o-mini',
+          displayName: 'GPT-4o mini',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: true,
+        ),
+      ],
+    );
+
+    await _pumpEditor(
+      tester,
+      repository: repository,
+      keyStore: keyStore,
+      controllerOverride: (ref) => ProviderController(
+        repository: repository,
+        keyStore: keyStore,
+        dio: ref.watch(dioProvider),
+        modelFetcher: (_, __) async => const [
+          ModelConfig(
+            id: 'gpt-4.1-mini',
+            displayName: 'gpt-4.1-mini',
+            protocol: ProviderProtocol.openai,
+            supportsStreaming: true,
+            supportsImages: true,
+          ),
+        ],
+      ),
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'API key'),
+      'sk-fetch-models',
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.sync_outlined));
+    await tester.pumpAndSettle();
+
+    expect(repository.savedModels.map((model) => model.id), [
+      'gpt-4.1-mini',
+    ]);
+    expect(find.text('Fetched 1 models.'), findsOneWidget);
+  });
+
+  testWidgets('provider editor exposes a back button', (tester) async {
+    await _pumpEditor(
+      tester,
+      repository: _RecordingProviderRepository(),
+      keyStore: _RecordingKeyStore(),
+    );
+
+    expect(find.byTooltip('Back'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpEditor(
@@ -235,6 +295,7 @@ Future<void> _pumpEditor(
   required _RecordingProviderRepository repository,
   required _RecordingKeyStore keyStore,
   String? providerId,
+  ProviderController Function(Ref ref)? controllerOverride,
 }) {
   return tester.pumpWidget(
     ProviderScope(
@@ -242,13 +303,16 @@ Future<void> _pumpEditor(
         providerRepositoryProvider.overrideWithValue(repository),
         secureKeyStoreProvider.overrideWithValue(keyStore),
         providerControllerProvider.overrideWith(
-          (ref) => ProviderController(
-            repository: repository,
-            keyStore: keyStore,
-            dio: ref.watch(dioProvider),
-            openAiProviderFactory: (_, __) => _SuccessfulConnectionProvider(),
-            claudeProviderFactory: (_, __) => _SuccessfulConnectionProvider(),
-          ),
+          controllerOverride ??
+              (ref) => ProviderController(
+                    repository: repository,
+                    keyStore: keyStore,
+                    dio: ref.watch(dioProvider),
+                    openAiProviderFactory: (_, __) =>
+                        _SuccessfulConnectionProvider(),
+                    claudeProviderFactory: (_, __) =>
+                        _SuccessfulConnectionProvider(),
+                  ),
         ),
       ],
       child: MaterialApp(
@@ -270,6 +334,7 @@ class _RecordingProviderRepository implements ProviderRepository {
   final Map<String, ProviderConfig> _providers;
   final Map<String, ModelConfig> _models;
   final savedProviders = <ProviderConfig>[];
+  final savedModels = <ModelConfig>[];
 
   @override
   Future<void> deleteModel(String modelId) async {
@@ -294,6 +359,7 @@ class _RecordingProviderRepository implements ProviderRepository {
 
   @override
   Future<void> saveModel(ModelConfig model) async {
+    savedModels.add(model);
     _models[model.id] = model;
   }
 

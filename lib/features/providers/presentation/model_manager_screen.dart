@@ -18,6 +18,7 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
     final models = ref.watch(modelListProvider);
     return Scaffold(
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('Models'),
       ),
       body: models.when(
