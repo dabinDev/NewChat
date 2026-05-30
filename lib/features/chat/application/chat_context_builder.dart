@@ -113,6 +113,8 @@ class ChatContextBuilder {
         )
       else
         ...message.parts.where((part) => part.type != MessagePartType.image),
+      if (addQuotePreface && message.replyRef?.imageAttachment != null)
+        MessagePart.image(message.replyRef!.imageAttachment!),
       if (preserveImages)
         ...message.parts.where((part) => part.type == MessagePartType.image),
     ];

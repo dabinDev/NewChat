@@ -143,6 +143,90 @@ void main() {
     );
   });
 
+  test('adds quoted image attachment to latest user provider message', () {
+    final quotedImage = _attachment('quoted-image');
+    final result = ChatContextBuilder(recentMessageLimit: 4).build(
+      _document(
+        messages: [
+          _message(
+            id: 'assistant-image',
+            role: ChatRole.assistant,
+            text: 'product screenshot',
+            parts: [
+              const MessagePart.text('product screenshot'),
+              MessagePart.image(quotedImage),
+            ],
+          ),
+          _message(
+            id: 'current-reply',
+            role: ChatRole.user,
+            text: 'make the background darker',
+            replyRef: MessageReplyRef(
+              messageId: 'assistant-image',
+              role: ChatRole.assistant,
+              textPreview: 'product screenshot',
+              imageAttachment: quotedImage,
+              createdAt: DateTime.utc(2026, 5, 30),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final providerUser = result.messages.singleWhere(
+      (message) => message.id == 'current-reply',
+    );
+
+    expect(providerUser.fullText, '''
+The user is replying to this earlier image message:
+"[Image] product screenshot"
+
+User message:
+make the background darker''');
+    expect(
+      providerUser.parts
+          .where((part) => part.type == MessagePartType.image)
+          .map((part) => part.attachment!.id),
+      ['quoted-image'],
+    );
+  });
+
+  test('keeps direct and quoted images on latest user provider message', () {
+    final quotedImage = _attachment('quoted-image');
+    final directImage = _attachment('direct-image');
+    final result = ChatContextBuilder(recentMessageLimit: 4).build(
+      _document(
+        messages: [
+          _message(
+            id: 'current-reply',
+            role: ChatRole.user,
+            text: 'compare these',
+            parts: [
+              const MessagePart.text('compare these'),
+              MessagePart.image(directImage),
+            ],
+            replyRef: MessageReplyRef(
+              messageId: 'assistant-image',
+              role: ChatRole.assistant,
+              textPreview: '',
+              imageAttachment: quotedImage,
+              createdAt: DateTime.utc(2026, 5, 30),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final providerUser = result.messages.single;
+
+    expect(
+      providerUser.parts
+          .where((part) => part.type == MessagePartType.image)
+          .map((part) => part.attachment!.id),
+      ['quoted-image', 'direct-image'],
+    );
+  });
+
   test('preserves metadata on copied provider messages', () {
     final editedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
     final firstEditAt = DateTime.utc(2026, 5, 30, 0, 30);
@@ -375,6 +459,7 @@ ChatMessage _message({
   List<MessagePart>? parts,
   String? replyToMessageId,
   String? replyPreview,
+  MessageReplyRef? replyRef,
   DateTime? editedAt,
   List<MessageEditEntry> editHistory = const [],
   DateTime? createdAt,
@@ -388,6 +473,7 @@ ChatMessage _message({
       updatedAt: createdAt ?? DateTime.utc(2026, 5, 30),
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
+      replyRef: replyRef,
       editedAt: editedAt,
       editHistory: editHistory,
     );
