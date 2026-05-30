@@ -6,7 +6,7 @@
         android:maxSdkVersion="32" />
 
     <application
-        android:label="newchat"
+        android:label="newchatbox"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
