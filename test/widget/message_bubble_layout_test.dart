@@ -78,4 +78,50 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('assistant text bubble keeps readable width on narrow screens',
+      (tester) async {
+    final message = ChatMessage(
+      id: 'assistant-message',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: const [
+        MessagePart.text(
+          'Today is **Saturday, May 30, 2026**.',
+        ),
+      ],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(message: message),
+        ),
+      ),
+    );
+
+    final bubbleWidth = tester
+        .getSize(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.margin ==
+                    const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ) &&
+                widget.padding == const EdgeInsets.all(12),
+          ),
+        )
+        .width;
+
+    expect(tester.takeException(), isNull);
+    expect(bubbleWidth, greaterThanOrEqualTo(240));
+    expect(bubbleWidth, lessThanOrEqualTo(296));
+  });
 }

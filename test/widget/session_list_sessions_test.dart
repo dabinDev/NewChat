@@ -84,4 +84,36 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Very long planning notes'), findsOneWidget);
   });
+
+  testWidgets('chat input stays above keyboard inset', (tester) async {
+    final session = demoChatSession.copyWith(
+      messages: const [],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(360, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: 300 * tester.view.devicePixelRatio,
+    );
+    addTearDown(() => tester.view.resetViewInsets());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ProviderScope(
+          child: ChatScreen(
+            sessionId: session.id,
+            demoSession: session,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final inputBottom = tester.getBottomLeft(find.text('Send')).dy;
+
+    expect(tester.takeException(), isNull);
+    expect(inputBottom, lessThan(420));
+  });
 }

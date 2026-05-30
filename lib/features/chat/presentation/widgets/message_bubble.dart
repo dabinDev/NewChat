@@ -24,39 +24,51 @@ class MessageBubble extends StatelessWidget {
     final foreground =
         _isUser ? colorScheme.onPrimaryContainer : colorScheme.onSurface;
 
-    return Align(
-      alignment: _isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.circular(8),
-            border:
-                _isUser ? null : Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: DefaultTextStyle.merge(
-            style: TextStyle(color: foreground),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final part in message.parts) _MessagePartView(part: part),
-                if (message.state == MessageState.streaming)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: LinearProgressIndicator(
-                      minHeight: 2,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-              ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final maxBubbleWidth = (availableWidth * 0.86).clamp(0.0, 720.0);
+
+        return Align(
+          alignment: _isUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+            child: Container(
+              width: _isUser ? null : maxBubbleWidth,
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.circular(8),
+                border: _isUser
+                    ? null
+                    : Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(color: foreground),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final part in message.parts)
+                      _MessagePartView(part: part),
+                    if (message.state == MessageState.streaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(
+                          minHeight: 2,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

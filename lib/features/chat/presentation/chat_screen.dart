@@ -124,37 +124,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: session.messages.length,
-        itemBuilder: (context, index) {
-          return MessageBubble(message: session.messages[index]);
-        },
-      ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
+      body: Column(
         children: [
-          if (!_hasProvider)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'Add a provider in Settings before starting a new chat.',
-                textAlign: TextAlign.center,
-              ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: session.messages.length,
+              itemBuilder: (context, index) {
+                return MessageBubble(message: session.messages[index]);
+              },
             ),
-          if (isStreaming)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: Text(l10n.stop),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!_hasProvider)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'Add a provider in Settings before starting a new chat.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              if (isStreaming)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: Text(l10n.stop),
+                  ),
+                ),
+              ChatInputBar(
+                supportsImages: model?.supportsImages ?? true,
+                enabled: !_isLoading && !_isSending && _hasProvider,
+                onSend: _sendMessage,
               ),
-            ),
-          ChatInputBar(
-            supportsImages: model?.supportsImages ?? true,
-            enabled: !_isLoading && !_isSending && _hasProvider,
-            onSend: _sendMessage,
+            ],
           ),
         ],
       ),
