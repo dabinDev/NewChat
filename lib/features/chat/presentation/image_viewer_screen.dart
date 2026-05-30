@@ -45,9 +45,8 @@ class ImageViewerScreen extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Edit image prompt',
-            onPressed: exists || onEditPrompt != null
-                ? () => _showEditDialog(context)
-                : null,
+            onPressed:
+                onEditPrompt == null ? null : () => _showEditDialog(context),
             icon: const Icon(Icons.auto_fix_high_outlined),
           ),
         ],

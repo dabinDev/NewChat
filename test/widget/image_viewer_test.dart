@@ -82,6 +82,31 @@ void main() {
 
     expect(editedPrompt, 'make it blue');
   });
+
+  testWidgets('image viewer disables edit when no edit callback exists',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ImageViewerScreen(
+          attachment: const AttachmentRef(
+            id: 'image-1',
+            localPath: '/missing/image.png',
+            mimeType: 'image/png',
+          ),
+          documentsDirectoryProvider: () async => Directory.systemTemp,
+          imageBuilder: (context, file) => const SizedBox.shrink(),
+        ),
+      ),
+    );
+
+    final editButton = tester.widget<IconButton>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is IconButton && widget.tooltip == 'Edit image prompt',
+      ),
+    );
+    expect(editButton.onPressed, isNull);
+  });
 }
 
 const _transparentPngBytes = <int>[
