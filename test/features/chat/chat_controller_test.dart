@@ -35,6 +35,8 @@ void main() {
     final document = controller.currentDocument!;
     expect(document.messages.length, 2);
     expect(document.messages.last.fullText, 'hello world');
+    expect(document.messages.last.parts, hasLength(1));
+    expect(document.messages.last.parts.single.text, 'hello world');
   });
 
   test('failed stream marks assistant failed and stores error part', () async {

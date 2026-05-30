@@ -124,4 +124,72 @@ void main() {
     expect(bubbleWidth, greaterThanOrEqualTo(240));
     expect(bubbleWidth, lessThanOrEqualTo(296));
   });
+
+  testWidgets('adjacent text parts render as a single markdown block',
+      (tester) async {
+    final message = ChatMessage(
+      id: 'split-message',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: const [
+        MessagePart.text('Could '),
+        MessagePart.text('you '),
+        MessagePart.text('clarify?'),
+      ],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(message: message),
+        ),
+      ),
+    );
+
+    expect(find.text('Could you clarify?'), findsOneWidget);
+    expect(find.text('Could '), findsNothing);
+    expect(find.text('you '), findsNothing);
+  });
+
+  testWidgets('empty streaming assistant bubble is compact', (tester) async {
+    final message = ChatMessage(
+      id: 'typing-message',
+      role: ChatRole.assistant,
+      state: MessageState.streaming,
+      parts: const [],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(message: message),
+        ),
+      ),
+    );
+
+    final bubbleWidth = tester
+        .getSize(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.margin ==
+                    const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ) &&
+                widget.padding == const EdgeInsets.all(12),
+          ),
+        )
+        .width;
+
+    expect(find.text('Thinking'), findsOneWidget);
+    expect(bubbleWidth, lessThan(180));
+  });
 }

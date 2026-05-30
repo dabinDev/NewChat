@@ -23,6 +23,7 @@ class MessageBubble extends StatelessWidget {
         _isUser ? colorScheme.primaryContainer : colorScheme.surfaceContainer;
     final foreground =
         _isUser ? colorScheme.onPrimaryContainer : colorScheme.onSurface;
+    final parts = _mergedAdjacentTextParts(message.parts);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -30,13 +31,14 @@ class MessageBubble extends StatelessWidget {
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
         final maxBubbleWidth = (availableWidth * 0.86).clamp(0.0, 720.0);
+        final shouldFillAssistantWidth = !_isUser && parts.isNotEmpty;
 
         return Align(
           alignment: _isUser ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxBubbleWidth),
             child: Container(
-              width: _isUser ? null : maxBubbleWidth,
+              width: shouldFillAssistantWidth ? maxBubbleWidth : null,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -52,16 +54,10 @@ class MessageBubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final part in message.parts)
-                      _MessagePartView(part: part),
-                    if (message.state == MessageState.streaming)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: LinearProgressIndicator(
-                          minHeight: 2,
-                          color: colorScheme.primary,
-                        ),
-                      ),
+                    for (final part in parts) _MessagePartView(part: part),
+                    if (message.state == MessageState.streaming &&
+                        parts.isEmpty)
+                      _TypingIndicator(color: colorScheme.primary),
                   ],
                 ),
               ),
@@ -69,6 +65,49 @@ class MessageBubble extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+List<MessagePart> _mergedAdjacentTextParts(List<MessagePart> parts) {
+  final merged = <MessagePart>[];
+  for (final part in parts) {
+    if (part.type == MessagePartType.text &&
+        merged.isNotEmpty &&
+        merged.last.type == MessagePartType.text) {
+      final previous = merged.removeLast();
+      merged.add(MessagePart.text('${previous.text ?? ''}${part.text ?? ''}'));
+      continue;
+    }
+    merged.add(part);
+  }
+  return merged;
+}
+
+class _TypingIndicator extends StatelessWidget {
+  const _TypingIndicator({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Thinking',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

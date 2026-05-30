@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:newchat/core/constants/app_constants.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
@@ -8,7 +10,6 @@ import 'package:newchat/features/providers/application/provider_controller.dart'
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:uuid/uuid.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final chatControllerProvider = Provider<ChatController>((ref) {
   return ChatController(
@@ -22,7 +23,7 @@ final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
   return PersistentSessionRepository(ref.watch(appDatabaseProvider));
 });
 
-class ChatController {
+class ChatController extends ChangeNotifier {
   ChatController({
     required SessionRepository repository,
     required ChatProvider chatProvider,
@@ -62,7 +63,7 @@ class ChatController {
       updatedAt: now,
       schemaVersion: AppConstants.schemaVersion,
     );
-    _currentDocument = document;
+    _setCurrentDocument(document);
     await _repository.saveDocument(document);
   }
 
@@ -91,7 +92,7 @@ class ChatController {
     if (document == null) {
       throw StateError('Chat session not found: $sessionId');
     }
-    _currentDocument = document;
+    _setCurrentDocument(document);
   }
 
   Future<void> sendMessage({
@@ -114,10 +115,12 @@ class ChatController {
       updatedAt: now,
     );
 
-    _currentDocument = _copyDocument(
-      document,
-      messages: [...document.messages, userMessage],
-      updatedAt: now,
+    _setCurrentDocument(
+      _copyDocument(
+        document,
+        messages: [...document.messages, userMessage],
+        updatedAt: now,
+      ),
     );
     await _repository.saveDocument(_currentDocument!);
 
@@ -150,15 +153,17 @@ class ChatController {
       return;
     }
     final now = DateTime.now().toUtc();
-    _currentDocument = _replaceMessage(
-      currentDocument!,
-      assistantId,
-      (message) => _copyMessage(
-        message,
-        state: MessageState.cancelled,
+    _setCurrentDocument(
+      _replaceMessage(
+        currentDocument!,
+        assistantId,
+        (message) => _copyMessage(
+          message,
+          state: MessageState.cancelled,
+          updatedAt: now,
+        ),
         updatedAt: now,
       ),
-      updatedAt: now,
     );
     await _repository.saveDocument(_currentDocument!);
     _clearGeneration();
@@ -182,10 +187,13 @@ class ChatController {
       }
 
       final now = DateTime.now().toUtc();
-      _currentDocument = _copyDocument(
-        document,
-        messages: document.messages.take(document.messages.length - 1).toList(),
-        updatedAt: now,
+      _setCurrentDocument(
+        _copyDocument(
+          document,
+          messages:
+              document.messages.take(document.messages.length - 1).toList(),
+          updatedAt: now,
+        ),
       );
       await _repository.saveDocument(_currentDocument!);
       await _streamAssistantResponse(hasImageAttachments: false);
@@ -207,10 +215,12 @@ class ChatController {
       createdAt: now,
       updatedAt: now,
     );
-    _currentDocument = _copyDocument(
-      document,
-      messages: [...document.messages, assistant],
-      updatedAt: now,
+    _setCurrentDocument(
+      _copyDocument(
+        document,
+        messages: [...document.messages, assistant],
+        updatedAt: now,
+      ),
     );
     await _repository.saveDocument(_currentDocument!);
 
@@ -285,15 +295,17 @@ class ChatController {
   ) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
-    _currentDocument = _replaceMessage(
-      document,
-      assistantId,
-      (message) => _copyMessage(
-        message,
-        parts: [...message.parts, part],
+    _setCurrentDocument(
+      _replaceMessage(
+        document,
+        assistantId,
+        (message) => _copyMessage(
+          message,
+          parts: _appendMessagePart(message.parts, part),
+          updatedAt: now,
+        ),
         updatedAt: now,
       ),
-      updatedAt: now,
     );
     await _repository.saveDocument(_currentDocument!);
   }
@@ -301,15 +313,17 @@ class ChatController {
   Future<void> _markAssistantCompleted(String assistantId) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
-    _currentDocument = _replaceMessage(
-      document,
-      assistantId,
-      (message) => _copyMessage(
-        message,
-        state: MessageState.completed,
+    _setCurrentDocument(
+      _replaceMessage(
+        document,
+        assistantId,
+        (message) => _copyMessage(
+          message,
+          state: MessageState.completed,
+          updatedAt: now,
+        ),
         updatedAt: now,
       ),
-      updatedAt: now,
     );
     await _repository.saveDocument(_currentDocument!);
   }
@@ -317,16 +331,18 @@ class ChatController {
   Future<void> _markAssistantFailed(String assistantId, String message) async {
     final document = _requireDocument();
     final now = DateTime.now().toUtc();
-    _currentDocument = _replaceMessage(
-      document,
-      assistantId,
-      (chatMessage) => _copyMessage(
-        chatMessage,
-        state: MessageState.failed,
-        parts: [...chatMessage.parts, MessagePart.error(message)],
+    _setCurrentDocument(
+      _replaceMessage(
+        document,
+        assistantId,
+        (chatMessage) => _copyMessage(
+          chatMessage,
+          state: MessageState.failed,
+          parts: [...chatMessage.parts, MessagePart.error(message)],
+          updatedAt: now,
+        ),
         updatedAt: now,
       ),
-      updatedAt: now,
     );
     await _repository.saveDocument(_currentDocument!);
   }
@@ -335,6 +351,11 @@ class ChatController {
     _streamIterator = null;
     _streamingSessionId = null;
     _streamingAssistantId = null;
+  }
+
+  void _setCurrentDocument(ChatSessionDocument document) {
+    _currentDocument = document;
+    notifyListeners();
   }
 
   ChatSessionDocument _requireDocument() {
@@ -502,3 +523,19 @@ ChatMessage _copyMessage(
       createdAt: message.createdAt,
       updatedAt: updatedAt ?? message.updatedAt,
     );
+
+List<MessagePart> _appendMessagePart(
+  List<MessagePart> parts,
+  MessagePart nextPart,
+) {
+  if (parts.isEmpty ||
+      parts.last.type != MessagePartType.text ||
+      nextPart.type != MessagePartType.text) {
+    return [...parts, nextPart];
+  }
+
+  return [
+    ...parts.take(parts.length - 1),
+    MessagePart.text('${parts.last.text ?? ''}${nextPart.text ?? ''}'),
+  ];
+}

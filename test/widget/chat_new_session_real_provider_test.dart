@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -167,6 +169,66 @@ void main() {
       ['First message', 'Second message'],
     );
   });
+
+  testWidgets('sent message appears before streaming response finishes',
+      (tester) async {
+    final sessionRepository = InMemorySessionRepository();
+    final chatProvider = _ControlledChatProvider();
+    final providerRepository = InMemoryProviderRepository(
+      providers: [
+        _provider(
+          id: 'real-provider',
+          defaultModelId: 'real-model',
+        ),
+      ],
+      models: const [
+        ModelConfig(
+          id: 'real-model',
+          displayName: 'Real Model',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: true,
+        ),
+      ],
+    );
+    final controller = ChatController(
+      repository: sessionRepository,
+      chatProvider: chatProvider,
+      providerRepository: providerRepository,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(sessionRepository),
+          providerRepositoryProvider.overrideWithValue(providerRepository),
+          chatControllerProvider.overrideWithValue(controller),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatScreen(sessionId: 'new'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Visible immediately');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send_outlined));
+    await tester.pump();
+
+    expect(find.text('Visible immediately'), findsWidgets);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+    chatProvider.events
+      ..add(const ChatStreamDelta('streamed'))
+      ..add(const ChatStreamDelta(' answer'))
+      ..add(const ChatStreamDone());
+    await tester.pumpAndSettle();
+
+    expect(find.text('streamed answer'), findsOneWidget);
+  });
 }
 
 Future<void> _sendText(WidgetTester tester, String text) async {
@@ -189,6 +251,20 @@ class _RecordingChatProvider implements ChatProvider {
     requests.add(request);
     yield const ChatStreamDone();
   }
+
+  @override
+  Future<ConnectionTestResult> testConnection(
+    ConnectionTestRequest request,
+  ) async {
+    return const ConnectionTestResult.success();
+  }
+}
+
+class _ControlledChatProvider implements ChatProvider {
+  final events = StreamController<ChatStreamEvent>();
+
+  @override
+  Stream<ChatStreamEvent> sendStream(ChatRequest request) => events.stream;
 
   @override
   Future<ConnectionTestResult> testConnection(

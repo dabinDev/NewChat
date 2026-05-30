@@ -26,10 +26,14 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
+  final ScrollController _scrollController = ScrollController();
   late String _title;
   late String _providerId;
   late String _modelId;
   ChatSessionDocument? _session;
+  ChatController? _observedController;
+  int _lastRenderedMessageCount = 0;
+  String _lastRenderedText = '';
   bool _isLoading = false;
   bool _isSending = false;
   bool _hasProvider = true;
@@ -52,7 +56,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   @override
+  void dispose() {
+    _observedController?.removeListener(_syncFromController);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    _observeController(ref.watch(chatControllerProvider));
     final l10n = AppLocalizations.of(context);
     final models = ref.watch(modelListProvider).valueOrNull ?? const [];
     final model = _firstModelWithId(models, _modelId);
@@ -64,6 +76,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isStreaming = session.messages.any(
       (message) => message.state == MessageState.streaming,
     );
+    _scheduleScrollIfMessagesChanged(session);
 
     return Scaffold(
       appBar: AppBar(
@@ -128,6 +141,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: session.messages.length,
               itemBuilder: (context, index) {
@@ -148,11 +162,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               if (isStreaming)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.stop_circle_outlined),
-                    label: Text(l10n.stop),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        ref.read(chatControllerProvider).stopGeneration();
+                      },
+                      icon: const Icon(Icons.stop_circle_outlined),
+                      label: Text(l10n.stop),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   ),
                 ),
               ChatInputBar(
@@ -164,6 +186,58 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _observeController(ChatController controller) {
+    if (_observedController == controller) {
+      return;
+    }
+    _observedController?.removeListener(_syncFromController);
+    _observedController = controller;
+    controller.addListener(_syncFromController);
+  }
+
+  void _syncFromController() {
+    final document = _observedController?.currentDocument;
+    if (document == null) {
+      return;
+    }
+    if (widget.sessionId != 'new' && document.id != _session?.id) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = document;
+      _title = document.title;
+      _providerId = document.providerId;
+      _modelId = document.modelId;
+    });
+  }
+
+  void _scheduleScrollIfMessagesChanged(ChatSessionDocument session) {
+    final textSnapshot = session.messages.map((message) {
+      return '${message.id}:${message.state.name}:${message.fullText}';
+    }).join('|');
+    if (_lastRenderedMessageCount == session.messages.length &&
+        _lastRenderedText == textSnapshot) {
+      return;
+    }
+    _lastRenderedMessageCount = session.messages.length;
+    _lastRenderedText = textSnapshot;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
     );
   }
 
