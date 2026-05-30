@@ -260,4 +260,26 @@ void main() {
     expect(copy.supportsImages, isTrue);
     expect(copy.contextLength, 200000);
   });
+
+  test(
+      'model effective image support treats OpenAI GPT models as vision capable',
+      () {
+    const staleFetchedModel = ModelConfig(
+      id: 'gpt-5.5',
+      displayName: 'gpt-5.5',
+      protocol: ProviderProtocol.openai,
+      supportsStreaming: true,
+      supportsImages: false,
+    );
+    const manualTextOnlyModel = ModelConfig(
+      id: 'codex-auto-review',
+      displayName: 'codex-auto-review',
+      protocol: ProviderProtocol.openai,
+      supportsStreaming: true,
+      supportsImages: false,
+    );
+
+    expect(staleFetchedModel.effectiveSupportsImages, isTrue);
+    expect(manualTextOnlyModel.effectiveSupportsImages, isFalse);
+  });
 }

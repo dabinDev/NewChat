@@ -57,6 +57,17 @@ class ModelConfig {
   final bool supportsImages;
   final int? contextLength;
 
+  bool get effectiveSupportsImages {
+    if (supportsImages) {
+      return true;
+    }
+    if (protocol != ProviderProtocol.openai) {
+      return false;
+    }
+    final lower = id.toLowerCase();
+    return lower.startsWith('gpt-') && !lower.contains('audio');
+  }
+
   Map<String, Object?> toJson() => {
         'id': id,
         'displayName': displayName,

@@ -521,14 +521,18 @@ ChatError _chatErrorFromDio(DioException error) {
   final type = _chatErrorTypeFromDio(error);
   return ChatError(
     type: type,
-    message: _safeClaudeDioMessage(type),
+    message: _safeClaudeDioMessage(type, statusCode, error.response?.data),
     statusCode: statusCode,
     cause: error,
   );
 }
 
-String _safeClaudeDioMessage(ChatErrorType type) {
-  return switch (type) {
+String _safeClaudeDioMessage(
+  ChatErrorType type,
+  int? statusCode,
+  Object? responseData,
+) {
+  final baseMessage = switch (type) {
     ChatErrorType.authentication => 'Claude authentication failed.',
     ChatErrorType.permission => 'Claude request was not permitted.',
     ChatErrorType.notFound => 'Claude endpoint was not found.',
@@ -538,6 +542,7 @@ String _safeClaudeDioMessage(ChatErrorType type) {
     ChatErrorType.cancelled => 'Claude request was cancelled.',
     ChatErrorType.parsing || ChatErrorType.unknown => 'Claude request failed.',
   };
+  return _appendSafeResponseDetails(baseMessage, statusCode, responseData);
 }
 
 ChatErrorType _chatErrorTypeFromDio(DioException error) {
@@ -566,4 +571,47 @@ ChatErrorType _chatErrorTypeFromDio(DioException error) {
     DioExceptionType.unknown =>
       ChatErrorType.unknown,
   };
+}
+
+String _appendSafeResponseDetails(
+  String baseMessage,
+  int? statusCode,
+  Object? responseData,
+) {
+  final parts = <String>[];
+  if (statusCode != null) {
+    parts.add('($statusCode)');
+  }
+  final responseMessage = _safeResponseMessage(responseData);
+  if (responseMessage != null) {
+    parts.add(responseMessage);
+  }
+  if (parts.isEmpty) {
+    return baseMessage;
+  }
+  return '$baseMessage ${parts.join(' ')}';
+}
+
+String? _safeResponseMessage(Object? data) {
+  Object? candidate;
+  if (data is Map) {
+    final error = data['error'];
+    if (error is Map) {
+      candidate = error['message'] ?? error['type'] ?? error['code'];
+    } else {
+      candidate = data['message'] ?? data['error'];
+    }
+  } else if (data is String) {
+    candidate = data;
+  }
+  if (candidate is! String) {
+    return null;
+  }
+  final normalized = candidate.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return normalized.length <= 180
+      ? normalized
+      : '${normalized.substring(0, 180)}...';
 }

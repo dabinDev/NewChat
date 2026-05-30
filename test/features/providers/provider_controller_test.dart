@@ -263,6 +263,40 @@ void main() {
     expect(fetched.supportsImages, isTrue);
   });
 
+  test('fetchModels upgrades existing OpenAI model image capability', () async {
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [
+        _model(
+          'gpt-5.5',
+          ProviderProtocol.openai,
+          supportsImages: false,
+        ),
+      ],
+    );
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: FakeProviderKeyStore(),
+      dio: Dio()
+        ..httpClientAdapter = _ModelListAdapter(
+          body: {
+            'data': [
+              {'id': 'gpt-5.5'},
+            ],
+          },
+        ),
+    );
+
+    await controller.fetchModelsWithConfig(
+      provider: _provider(id: 'provider-1'),
+      apiKeyInput: 'sk-fetch-models',
+    );
+
+    final models = await repository.listModels();
+    final fetched = models.singleWhere((model) => model.id == 'gpt-5.5');
+    expect(fetched.supportsImages, isTrue);
+  });
+
   test('fetchModels masks API key in diagnostics', () async {
     final repository = InMemoryProviderRepository(
       providers: [_provider(id: 'provider-1')],
@@ -352,12 +386,17 @@ ProviderConfig _provider({
   );
 }
 
-ModelConfig _model(String id, ProviderProtocol protocol) => ModelConfig(
+ModelConfig _model(
+  String id,
+  ProviderProtocol protocol, {
+  bool supportsImages = true,
+}) =>
+    ModelConfig(
       id: id,
       displayName: id,
       protocol: protocol,
       supportsStreaming: true,
-      supportsImages: true,
+      supportsImages: supportsImages,
     );
 
 class _ModelListAdapter implements HttpClientAdapter {

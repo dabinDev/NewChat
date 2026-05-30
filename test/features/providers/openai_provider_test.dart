@@ -398,16 +398,20 @@ void main() {
     expect(events.last, isA<ChatStreamDone>());
   });
 
-  test('OpenAIProvider converts Dio errors to ChatStreamFailed', () async {
+  test('OpenAIProvider includes safe status and response details in Dio errors',
+      () async {
     const rawDioMessage =
         'This exception was thrown because the response has a status code of 503';
     final dio = Dio()
       ..httpClientAdapter = _FakeHttpClientAdapter(
         error: DioException(
           requestOptions: RequestOptions(path: '/v1/chat/completions'),
-          response: Response<void>(
+          response: Response<Map<String, Object?>>(
             requestOptions: RequestOptions(path: '/v1/chat/completions'),
             statusCode: 503,
+            data: const {
+              'error': {'message': 'upstream model is unavailable'},
+            },
           ),
           type: DioExceptionType.badResponse,
           message: rawDioMessage,
@@ -438,7 +442,10 @@ void main() {
     expect(events, hasLength(1));
     final failed = events.single as ChatStreamFailed;
     expect(failed.error.message, isNot(contains(rawDioMessage)));
-    expect(failed.error.message, 'OpenAI request failed.');
+    expect(
+      failed.error.message,
+      'OpenAI request failed. (503) upstream model is unavailable',
+    );
     expect(failed.error.statusCode, 503);
   });
 

@@ -182,7 +182,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                 ),
               ChatInputBar(
-                supportsImages: model?.supportsImages ?? true,
+                supportsImages: model?.effectiveSupportsImages ?? true,
                 enabled: !_isLoading && !_isSending && _hasProvider,
                 onSend: _sendMessage,
               ),
@@ -426,14 +426,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             final provider = selection.provider;
             return ListTile(
               leading: Icon(
-                model.supportsImages
+                model.effectiveSupportsImages
                     ? Icons.image_outlined
                     : Icons.notes_outlined,
               ),
               title: Text(model.displayName),
               subtitle: Text(
                 '${provider.name} / ${model.id}'
-                '${model.supportsImages ? ' / Images' : ' / Text only'}',
+                '${model.effectiveSupportsImages ? ' / Images' : ' / Text only'}',
               ),
               selected: provider.id == _providerId && model.id == _modelId,
               onTap: () => Navigator.of(context).pop(selection),

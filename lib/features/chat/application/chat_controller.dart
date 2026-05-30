@@ -483,7 +483,7 @@ class ChatController extends ChangeNotifier {
         'Provider and model protocols differ.',
       );
     }
-    if (hasImageAttachments && !model.supportsImages) {
+    if (hasImageAttachments && !model.effectiveSupportsImages) {
       throw const _ChatRequestValidationException(
         'The selected model does not support images.',
       );
