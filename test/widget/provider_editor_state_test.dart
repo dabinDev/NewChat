@@ -251,6 +251,17 @@ void main() {
     );
   });
 
+  testWidgets('new provider name uses localized default', (tester) async {
+    await _pumpEditor(
+      tester,
+      repository: _RecordingProviderRepository(),
+      keyStore: _RecordingKeyStore(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Work gateway'), findsOneWidget);
+  });
+
   testWidgets('custom model appears in provider default model dropdown',
       (tester) async {
     final repository = _RecordingProviderRepository(

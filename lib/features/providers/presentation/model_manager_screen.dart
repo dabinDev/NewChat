@@ -36,9 +36,9 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           _showModelSheet(
-            const _EditableModel(
+            _EditableModel(
               id: 'custom-model',
-              name: 'Custom model',
+              name: l10n.customModel,
               protocol: ProviderProtocol.openai,
               supportsStreaming: true,
               supportsImages: false,

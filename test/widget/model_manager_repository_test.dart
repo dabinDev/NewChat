@@ -43,6 +43,9 @@ void main() {
 
     await tester.tap(find.text('Add model'));
     await tester.pumpAndSettle();
+
+    expect(find.text('Custom model'), findsOneWidget);
+
     await tester.enterText(
       find.widgetWithText(TextField, 'Display name'),
       'Saved Model',

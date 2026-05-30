@@ -36,11 +36,12 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   bool _isTesting = false;
   bool _isFetchingModels = false;
   bool _hasSavedApiKey = false;
+  bool _usedLocalizedDefaultName = false;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Work gateway');
+    _nameController = TextEditingController();
     _baseUrlController = TextEditingController(
       text: _defaultBaseUrlFor(_protocol),
     );
@@ -66,6 +67,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     final models = ref.watch(modelListProvider).valueOrNull;
     final modelOptions = _modelOptionsFor(_protocol, models);
     _ensureSelectedModel(modelOptions);
+    _ensureLocalizedDefaultName(l10n);
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -196,6 +198,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
       _providerId = provider!.id;
       _createdAt = provider.createdAt;
       _nameController.text = provider.name;
+      _usedLocalizedDefaultName = false;
       _protocol = provider.protocol;
       _baseUrlController.text = provider.baseUrl;
       _defaultModel = provider.defaultModelId;
@@ -272,7 +275,15 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
         _ensureSelectedModel(_modelOptionsFor(_protocol, models));
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message)),
+        SnackBar(
+          content: Text(
+            result.isSuccess
+                ? AppLocalizations.of(context).fetchedModels(
+                    result.importedCount,
+                  )
+                : AppLocalizations.of(context).fetchModelsFailed,
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -286,7 +297,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     return ProviderConfig(
       id: _providerId ?? _uuid.v4(),
       name: _nameController.text.trim().isEmpty
-          ? 'Provider'
+          ? AppLocalizations.of(context).fallbackProviderName
           : _nameController.text.trim(),
       protocol: _protocol,
       baseUrl: _baseUrlController.text.trim(),
@@ -327,5 +338,16 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
       ProviderProtocol.openai => 'https://api.openai.com',
       ProviderProtocol.claude => 'https://api.anthropic.com',
     };
+  }
+
+  void _ensureLocalizedDefaultName(AppLocalizations l10n) {
+    if (_providerId != null || _usedLocalizedDefaultName) {
+      return;
+    }
+    if (_nameController.text.trim().isNotEmpty) {
+      return;
+    }
+    _nameController.text = l10n.defaultProviderName;
+    _usedLocalizedDefaultName = true;
   }
 }
