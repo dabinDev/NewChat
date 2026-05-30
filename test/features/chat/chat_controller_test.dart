@@ -1245,6 +1245,81 @@ make it blue''',
     expect(fakeProvider.requests, isEmpty);
   });
 
+  test('retryLastFailed validates retained quoted images before provider call',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    const quotedImage = AttachmentRef(
+      id: 'quoted-image',
+      localPath: '/tmp/quoted.png',
+      mimeType: 'image/png',
+    );
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        providerId: 'provider-1',
+        modelId: 'text-only',
+        messages: [
+          ChatMessage(
+            id: 'user-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('edit this')],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+            replyRef: MessageReplyRef(
+              messageId: 'assistant-image',
+              role: ChatRole.assistant,
+              textPreview: 'original image',
+              imageAttachment: quotedImage,
+              createdAt: DateTime.utc(2026, 5, 30, 7, 59),
+            ),
+          ),
+          ChatMessage(
+            id: 'assistant-1',
+            role: ChatRole.assistant,
+            state: MessageState.failed,
+            parts: const [MessagePart.error('Generation failed.')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+        ],
+      ),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'text-only',
+          ),
+        ],
+        models: [
+          _model(
+            'text-only',
+            ProviderProtocol.openai,
+            supportsImages: false,
+          ),
+        ],
+      ),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.retryLastFailed();
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.role, ChatRole.assistant);
+    expect(assistant.state, MessageState.failed);
+    expect(
+      assistant.parts.single.text,
+      'The selected model does not support images.',
+    );
+    expect(fakeProvider.requests, isEmpty);
+  });
+
   test('retryLastFailed throws while generation is active', () async {
     final events = StreamController<ChatStreamEvent>();
     final controller = ChatController(
