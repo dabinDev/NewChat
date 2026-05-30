@@ -1,8 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:newchat/core/errors/chat_error.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 
-sealed class ChatStreamEvent {
+abstract class ChatStreamEvent {
   const ChatStreamEvent();
 }
 
@@ -13,6 +15,16 @@ class ChatStreamDelta extends ChatStreamEvent {
 
 class ChatStreamDone extends ChatStreamEvent {
   const ChatStreamDone();
+}
+
+class ChatStreamImage extends ChatStreamEvent {
+  const ChatStreamImage({
+    required this.bytes,
+    required this.mimeType,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
 }
 
 class ChatStreamFailed extends ChatStreamEvent {

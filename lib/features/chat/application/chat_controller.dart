@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,15 +31,19 @@ class ChatController extends ChangeNotifier {
     required ChatProvider chatProvider,
     ProviderRepository? providerRepository,
     ChatContextBuilder contextBuilder = const ChatContextBuilder(),
+    Future<Directory> Function()? imageOutputDirectory,
   })  : _repository = repository,
         _chatProvider = chatProvider,
         _providerRepository = providerRepository,
-        _contextBuilder = contextBuilder;
+        _contextBuilder = contextBuilder,
+        _imageOutputDirectory =
+            imageOutputDirectory ?? _defaultImageOutputDirectory;
 
   final SessionRepository _repository;
   final ChatProvider _chatProvider;
   final ProviderRepository? _providerRepository;
   final ChatContextBuilder _contextBuilder;
+  final Future<Directory> Function() _imageOutputDirectory;
   final Uuid _uuid = const Uuid();
 
   ChatSessionDocument? _currentDocument;
@@ -371,12 +376,18 @@ class ChatController extends ChangeNotifier {
       case ChatStreamDelta(:final text):
         await _appendAssistantPart(assistantId, MessagePart.text(text));
         return true;
+      case ChatStreamImage(:final bytes, :final mimeType):
+        final attachment = await _writeGeneratedImage(bytes, mimeType);
+        await _appendAssistantPart(assistantId, MessagePart.image(attachment));
+        return true;
       case ChatStreamDone():
         await _markAssistantCompleted(assistantId);
         return false;
       case ChatStreamFailed(:final error):
         await _markAssistantFailed(assistantId, error.message);
         return false;
+      case _:
+        return true;
     }
   }
 
@@ -399,6 +410,25 @@ class ChatController extends ChangeNotifier {
       ),
     );
     await _repository.saveDocument(_currentDocument!);
+  }
+
+  Future<AttachmentRef> _writeGeneratedImage(
+    List<int> bytes,
+    String mimeType,
+  ) async {
+    final directory = await _imageOutputDirectory();
+    await directory.create(recursive: true);
+    final id = _uuid.v4();
+    final extension = _extensionForMimeType(mimeType);
+    final file =
+        File('${directory.path}${Platform.pathSeparator}$id$extension');
+    await file.writeAsBytes(bytes, flush: true);
+    return AttachmentRef(
+      id: id,
+      localPath: file.path,
+      mimeType: mimeType,
+      fileSize: bytes.length,
+    );
   }
 
   Future<void> _markAssistantCompleted(String assistantId) async {
@@ -675,3 +705,17 @@ List<MessagePart> _appendMessagePart(
 
 bool _hasImageAttachments(ChatMessage message) =>
     message.parts.any((part) => part.type == MessagePartType.image);
+
+Future<Directory> _defaultImageOutputDirectory() async {
+  return Directory(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}newchat-generated-images');
+}
+
+String _extensionForMimeType(String mimeType) {
+  return switch (mimeType.toLowerCase()) {
+    'image/jpeg' || 'image/jpg' => '.jpg',
+    'image/webp' => '.webp',
+    'image/gif' => '.gif',
+    _ => '.png',
+  };
+}

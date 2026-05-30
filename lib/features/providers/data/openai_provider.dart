@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:newchat/core/errors/chat_error.dart';
@@ -133,6 +134,24 @@ class OpenAIProvider implements ChatProvider {
             message: 'API key is missing.',
           ),
         );
+        return;
+      }
+
+      if (_isOpenAiImageGenerationModel(request.model)) {
+        final response = await _dio.postUri<Object?>(
+          _imageGenerationsUri(request.provider),
+          data: _buildOpenAiImageGenerationPayload(
+            model: request.model,
+            messages: request.messages,
+          ),
+          options: Options(
+            responseType: ResponseType.json,
+            headers: {
+              'Authorization': 'Bearer ${apiKey.trim()}',
+            },
+          ),
+        );
+        yield* _emitImageGenerationResponse(response.data);
         return;
       }
 
@@ -293,6 +312,60 @@ class OpenAIProvider implements ChatProvider {
     }
     yield const ChatStreamDone();
   }
+
+  Stream<ChatStreamEvent> _emitImageGenerationResponse(Object? data) async* {
+    if (data is! Map<String, Object?>) {
+      yield const ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.parsing,
+          message: 'Expected JSON object response.',
+        ),
+      );
+      return;
+    }
+
+    final images = data['data'];
+    if (images is! List || images.isEmpty) {
+      yield const ChatStreamFailed(
+        ChatError(
+          type: ChatErrorType.parsing,
+          message: 'Expected image data array in response.',
+        ),
+      );
+      return;
+    }
+
+    for (final image in images) {
+      if (image is! Map) {
+        continue;
+      }
+      final encoded = image['b64_json'];
+      if (encoded is String && encoded.isNotEmpty) {
+        yield ChatStreamImage(
+          bytes: Uint8List.fromList(base64Decode(encoded)),
+          mimeType: 'image/png',
+        );
+        yield const ChatStreamDone();
+        return;
+      }
+      if (image['url'] is String) {
+        yield const ChatStreamFailed(
+          ChatError(
+            type: ChatErrorType.parsing,
+            message: 'OpenAI image URL responses are not supported yet.',
+          ),
+        );
+        return;
+      }
+    }
+
+    yield const ChatStreamFailed(
+      ChatError(
+        type: ChatErrorType.parsing,
+        message: 'Expected base64 image data in response.',
+      ),
+    );
+  }
 }
 
 String _openAiRole(ChatRole role) {
@@ -319,6 +392,33 @@ Object? _openAiContent(List<MessagePart> parts) {
     'OpenAI image payloads require buildOpenAiPayloadWithImages so '
     'attachment bytes can be encoded as data URLs.',
   );
+}
+
+Map<String, Object?> _buildOpenAiImageGenerationPayload({
+  required ModelConfig model,
+  required List<ChatMessage> messages,
+}) =>
+    {
+      'model': model.id,
+      'prompt': _latestUserTextPrompt(messages),
+    };
+
+String _latestUserTextPrompt(List<ChatMessage> messages) {
+  for (final message in messages.reversed) {
+    if (message.role != ChatRole.user ||
+        message.state != MessageState.completed) {
+      continue;
+    }
+    final prompt = message.parts
+        .where((part) => part.type == MessagePartType.text)
+        .map((part) => part.text ?? '')
+        .join()
+        .trim();
+    if (prompt.isNotEmpty) {
+      return prompt;
+    }
+  }
+  return '';
 }
 
 Future<Object?> _openAiContentWithImages(
@@ -441,6 +541,14 @@ List<String> _parseOpenAiSseEvents(List<SseEvent> events) {
 
 Uri _chatCompletionsUri(ProviderConfig provider) {
   return _endpointUri(provider.baseUrl, '/v1/chat/completions');
+}
+
+Uri _imageGenerationsUri(ProviderConfig provider) {
+  return _endpointUri(provider.baseUrl, '/v1/images/generations');
+}
+
+bool _isOpenAiImageGenerationModel(ModelConfig model) {
+  return model.id.toLowerCase().startsWith('gpt-image');
 }
 
 Uri _endpointUri(String rawBaseUrl, String endpointPath) {

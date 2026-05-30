@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/core/errors/chat_error.dart';
@@ -38,6 +40,42 @@ void main() {
     expect(document.messages.last.fullText, 'hello world');
     expect(document.messages.last.parts, hasLength(1));
     expect(document.messages.last.parts.single.text, 'hello world');
+  });
+
+  test('sendMessage appends generated image as assistant image part', () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider([
+      ChatStreamImage(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        mimeType: 'image/png',
+      ),
+      const ChatStreamDone(),
+    ]);
+    final outputDir = await Directory.systemTemp.createTemp('newchat-test-');
+    addTearDown(() => outputDir.delete(recursive: true));
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      imageOutputDirectory: () async => outputDir,
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-image-2',
+      title: 'New Chat',
+    );
+    await controller
+        .sendMessage(text: 'draw a red kite', attachments: const []);
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.state, MessageState.completed);
+    expect(assistant.parts, hasLength(1));
+    final imagePart = assistant.parts.single;
+    expect(imagePart.type, MessagePartType.image);
+    expect(imagePart.attachment!.mimeType, 'image/png');
+    expect(imagePart.attachment!.fileSize, 3);
+    expect(
+        await File(imagePart.attachment!.localPath).readAsBytes(), [1, 2, 3]);
   });
 
   test('sendMessage stores reply metadata and sends quote preface', () async {

@@ -313,6 +313,8 @@ void main() {
           eventLabels.add(text);
         case ChatStreamDone():
           eventLabels.add('[DONE]');
+        case ChatStreamImage():
+          eventLabels.add('[IMAGE]');
         case ChatStreamFailed(:final error):
           eventLabels.add(error.message);
       }
@@ -326,6 +328,121 @@ void main() {
     );
     expect(adapter.lastOptions?.headers['Authorization'], 'Bearer secret-key');
     expect(adapter.lastOptions?.headers['Accept'], 'text/event-stream');
+  });
+
+  test('OpenAIProvider routes gpt-image models to image generations', () async {
+    final adapter = _FakeHttpClientAdapter(
+      responseBody: utf8.encode(
+        jsonEncode({
+          'data': [
+            {'b64_json': base64Encode(utf8.encode('png bytes'))},
+          ],
+        }),
+      ),
+      responseHeaders: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: const ModelConfig(
+              id: 'gpt-image-2',
+              displayName: 'GPT Image 2',
+              protocol: ProviderProtocol.openai,
+              supportsStreaming: false,
+              supportsImages: true,
+            ),
+            systemPrompt: 'ignore for image prompt',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('first prompt')],
+              ),
+              _message(
+                role: ChatRole.assistant,
+                parts: const [MessagePart.text('old answer')],
+              ),
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('draw a red kite')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    final data = adapter.lastOptions!.data! as Map<String, Object?>;
+    expect(adapter.lastOptions?.method, 'POST');
+    expect(
+      adapter.lastOptions?.path,
+      'https://token.cylonai.cn/v1/images/generations',
+    );
+    expect(data['model'], 'gpt-image-2');
+    expect(data['prompt'], 'draw a red kite');
+    expect(data, isNot(containsPair('stream', anything)));
+    expect(data, isNot(containsPair('messages', anything)));
+    expect(adapter.lastOptions?.headers['Accept'], isNull);
+    expect(events.last, isA<ChatStreamDone>());
+  });
+
+  test('OpenAIProvider parses b64 image generation response into image event',
+      () async {
+    final imageBytes = Uint8List.fromList(utf8.encode('png bytes'));
+    final adapter = _FakeHttpClientAdapter(
+      responseBody: utf8.encode(
+        jsonEncode({
+          'data': [
+            {'b64_json': base64Encode(imageBytes)},
+          ],
+        }),
+      ),
+      responseHeaders: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+    final dio = Dio()..httpClientAdapter = adapter;
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: const ModelConfig(
+              id: 'GPT-IMAGE-2',
+              displayName: 'GPT Image 2',
+              protocol: ProviderProtocol.openai,
+              supportsStreaming: false,
+              supportsImages: true,
+            ),
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: const [MessagePart.text('draw a red kite')],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(events, hasLength(2));
+    final image = events.first as ChatStreamImage;
+    expect(image.bytes, imageBytes);
+    expect(image.mimeType, 'image/png');
+    expect(events.last, isA<ChatStreamDone>());
   });
 
   test('OpenAIProvider normalizes base URLs that already include v1', () async {
@@ -590,10 +707,16 @@ ChatMessage _message({
 class _FakeHttpClientAdapter implements HttpClientAdapter {
   _FakeHttpClientAdapter({
     this.streamChunks = const [],
+    this.responseBody,
+    this.responseHeaders = const {
+      Headers.contentTypeHeader: ['text/event-stream'],
+    },
     this.error,
   });
 
   final List<Uint8List> streamChunks;
+  final List<int>? responseBody;
+  final Map<String, List<String>> responseHeaders;
   final DioException? error;
   RequestOptions? lastOptions;
 
@@ -612,11 +735,13 @@ class _FakeHttpClientAdapter implements HttpClientAdapter {
     }
 
     return ResponseBody(
-      Stream.fromIterable(streamChunks),
+      Stream.fromIterable(
+        responseBody == null
+            ? streamChunks
+            : [Uint8List.fromList(responseBody!)],
+      ),
       200,
-      headers: {
-        Headers.contentTypeHeader: ['text/event-stream'],
-      },
+      headers: responseHeaders,
     );
   }
 }
