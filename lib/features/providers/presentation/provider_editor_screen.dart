@@ -35,6 +35,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   bool _isSaving = false;
   bool _isTesting = false;
   bool _isFetchingModels = false;
+  bool _hasSavedApiKey = false;
 
   @override
   void initState() {
@@ -112,6 +113,9 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
             obscureText: _obscureKey,
             decoration: InputDecoration(
               labelText: 'API key',
+              helperText: _hasSavedApiKey
+                  ? 'Saved key is stored. Leave blank to keep it.'
+                  : 'Paste an API key to save it securely.',
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 tooltip: _obscureKey ? 'Show API key' : 'Hide API key',
@@ -179,8 +183,9 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
   }
 
   Future<void> _loadProvider(String providerId) async {
-    final providers =
-        await ref.read(providerControllerProvider).listProviders();
+    final controller = ref.read(providerControllerProvider);
+    final providers = await controller.listProviders();
+    final hasSavedApiKey = await controller.hasSavedApiKey(providerId);
     ProviderConfig? provider;
     for (final candidate in providers) {
       if (candidate.id == providerId) {
@@ -198,6 +203,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
       _protocol = provider.protocol;
       _baseUrlController.text = provider.baseUrl;
       _defaultModel = provider.defaultModelId;
+      _hasSavedApiKey = hasSavedApiKey;
     });
   }
 

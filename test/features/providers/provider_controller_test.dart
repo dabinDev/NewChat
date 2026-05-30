@@ -112,6 +112,25 @@ void main() {
     expect(keyStore.deletedProviderIds, ['provider-1']);
   });
 
+  test('hasSavedApiKey reports only non-empty stored keys', () async {
+    final repository = InMemoryProviderRepository(
+      providers: [_provider(id: 'provider-1')],
+      models: [_model('gpt-4o-mini', ProviderProtocol.openai)],
+    );
+    final controller = ProviderController(
+      repository: repository,
+      keyStore: FakeProviderKeyStore({
+        'provider-with-key': ' sk-existing-secret ',
+        'provider-empty-key': '   ',
+      }),
+      dio: Dio(),
+    );
+
+    expect(await controller.hasSavedApiKey('provider-with-key'), isTrue);
+    expect(await controller.hasSavedApiKey('provider-empty-key'), isFalse);
+    expect(await controller.hasSavedApiKey('provider-missing-key'), isFalse);
+  });
+
   test('testConnection rejects diagnostics that expose API key input',
       () async {
     final repository = InMemoryProviderRepository(

@@ -97,6 +97,11 @@ class ProviderController {
   Future<List<ProviderConfig>> listProviders() => _repository.listProviders();
   Future<List<ModelConfig>> listModels() => _repository.listModels();
 
+  Future<bool> hasSavedApiKey(String providerId) async {
+    final key = await _keyStore.readProviderKey(providerId);
+    return key != null && key.trim().isNotEmpty;
+  }
+
   Future<void> saveProvider(
     ProviderConfig provider, {
     required String apiKeyInput,

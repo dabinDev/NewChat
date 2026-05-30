@@ -195,6 +195,62 @@ void main() {
     expect(keyStore.writtenKeys, isEmpty);
   });
 
+  testWidgets('editing provider shows saved base URL and saved key state',
+      (tester) async {
+    final repository = _RecordingProviderRepository(
+      providers: [
+        ProviderConfig(
+          id: 'provider-existing',
+          name: 'Existing gateway',
+          protocol: ProviderProtocol.openai,
+          baseUrl: 'https://token.cylonai.cn',
+          defaultModelId: 'gpt-4o-mini',
+          createdAt: DateTime.utc(2026, 1, 2),
+          updatedAt: DateTime.utc(2026, 1, 3),
+        ),
+      ],
+      models: const [
+        ModelConfig(
+          id: 'gpt-4o-mini',
+          displayName: 'GPT-4o mini',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: true,
+        ),
+      ],
+    );
+    const rawKey = 'sk-stored-existing-secret';
+
+    await _pumpEditor(
+      tester,
+      repository: repository,
+      keyStore: _RecordingKeyStore({'provider-existing': rawKey}),
+      providerId: 'provider-existing',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('https://token.cylonai.cn'), findsOneWidget);
+    expect(
+      find.text('Saved key is stored. Leave blank to keep it.'),
+      findsOneWidget,
+    );
+    expect(find.text(rawKey), findsNothing);
+  });
+
+  testWidgets('provider editor prompts for API key when none is saved',
+      (tester) async {
+    await _pumpEditor(
+      tester,
+      repository: _RecordingProviderRepository(),
+      keyStore: _RecordingKeyStore(),
+    );
+
+    expect(
+      find.text('Paste an API key to save it securely.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('custom model appears in provider default model dropdown',
       (tester) async {
     final repository = _RecordingProviderRepository(
