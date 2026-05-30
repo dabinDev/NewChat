@@ -10,11 +10,23 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
+    this.onReply,
+    this.onEdit,
   });
 
   final ChatMessage message;
+  final ValueChanged<ChatMessage>? onReply;
+  final ValueChanged<ChatMessage>? onEdit;
 
   bool get _isUser => message.role == ChatRole.user;
+  bool get _canReply =>
+      message.state == MessageState.completed &&
+      (message.role == ChatRole.user || message.role == ChatRole.assistant) &&
+      onReply != null;
+  bool get _canEdit =>
+      message.state == MessageState.completed &&
+      message.role == ChatRole.user &&
+      onEdit != null;
 
   @override
   Widget build(BuildContext context) {
@@ -37,28 +49,53 @@ class MessageBubble extends StatelessWidget {
           alignment: _isUser ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-            child: Container(
-              width: shouldFillAssistantWidth ? maxBubbleWidth : null,
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.circular(8),
-                border: _isUser
-                    ? null
-                    : Border.all(color: colorScheme.outlineVariant),
-              ),
-              child: DefaultTextStyle.merge(
-                style: TextStyle(color: foreground),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final part in parts) _MessagePartView(part: part),
-                    if (message.state == MessageState.streaming &&
-                        parts.isEmpty)
-                      _TypingIndicator(color: colorScheme.primary),
-                  ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: _canReply || _canEdit
+                  ? () => _showMessageActions(context)
+                  : null,
+              child: Container(
+                width: shouldFillAssistantWidth ? maxBubbleWidth : null,
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: _isUser
+                      ? null
+                      : Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(color: foreground),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.replyPreview != null &&
+                          message.replyPreview!.trim().isNotEmpty)
+                        _BubbleQuotePreview(
+                          preview: message.replyPreview!.trim(),
+                          foreground: foreground,
+                        ),
+                      for (final part in parts) _MessagePartView(part: part),
+                      if (message.state == MessageState.streaming &&
+                          parts.isEmpty)
+                        _TypingIndicator(color: colorScheme.primary),
+                      if (message.editedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'Edited',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: foreground.withValues(alpha: 0.72),
+                                ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -67,7 +104,44 @@ class MessageBubble extends StatelessWidget {
       },
     );
   }
+
+  Future<void> _showMessageActions(BuildContext context) async {
+    final action = await showModalBottomSheet<_MessageAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_canReply)
+              ListTile(
+                leading: const Icon(Icons.reply_outlined),
+                title: const Text('Reply'),
+                onTap: () => Navigator.of(context).pop(_MessageAction.reply),
+              ),
+            if (_canEdit)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit'),
+                onTap: () => Navigator.of(context).pop(_MessageAction.edit),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    switch (action) {
+      case _MessageAction.reply:
+        onReply?.call(message);
+      case _MessageAction.edit:
+        onEdit?.call(message);
+      case null:
+        break;
+    }
+  }
 }
+
+enum _MessageAction { reply, edit }
 
 List<MessagePart> _mergedAdjacentTextParts(List<MessagePart> parts) {
   final merged = <MessagePart>[];
@@ -108,6 +182,43 @@ class _TypingIndicator extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+}
+
+class _BubbleQuotePreview extends StatelessWidget {
+  const _BubbleQuotePreview({
+    required this.preview,
+    required this.foreground,
+  });
+
+  final String preview;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: foreground.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border(
+          left: BorderSide(
+            color: foreground.withValues(alpha: 0.5),
+            width: 3,
+          ),
+        ),
+      ),
+      child: Text(
+        preview,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: foreground.withValues(alpha: 0.82),
+            ),
+      ),
     );
   }
 }

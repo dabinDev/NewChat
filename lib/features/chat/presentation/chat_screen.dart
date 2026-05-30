@@ -39,6 +39,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isLoading = false;
   bool _isSending = false;
   bool _hasProvider = true;
+  ChatQuoteDraft? _quote;
 
   @override
   void initState() {
@@ -149,7 +150,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: session.messages.length,
               itemBuilder: (context, index) {
-                return MessageBubble(message: session.messages[index]);
+                return MessageBubble(
+                  message: session.messages[index],
+                  onReply: _setReplyQuote,
+                  onEdit: _showEditMessageDialog,
+                );
               },
             ),
           ),
@@ -184,6 +189,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ChatInputBar(
                 supportsImages: model?.effectiveSupportsImages ?? true,
                 enabled: !_isLoading && !_isSending && _hasProvider,
+                quote: _quote,
+                onCancelQuote: () => setState(() => _quote = null),
                 onSend: _sendMessage,
               ),
             ],
@@ -299,10 +306,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  Future<void> _sendMessage(
-    String text,
-    List<AttachmentRef> attachments,
-  ) async {
+  Future<void> _sendMessage(ChatSendPayload payload) async {
+    final quote = _quote;
     setState(() => _isSending = true);
     try {
       final controller = ref.read(chatControllerProvider);
@@ -311,17 +316,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           await controller.createSession(
             providerId: _providerId,
             modelId: _modelId,
-            title: l10nTitle(text),
+            title: l10nTitle(payload.text),
           );
         } else {
           await controller.createSessionFromDefaultProvider(
-            title: l10nTitle(text),
+            title: l10nTitle(payload.text),
           );
         }
       }
-      await controller.sendMessage(text: text, attachments: attachments);
+      await controller.sendMessage(
+        text: payload.text,
+        attachments: payload.attachments,
+        replyToMessageId: payload.replyToMessageId,
+        replyPreview: payload.replyPreview,
+      );
       if (mounted) {
         setState(() {
+          if (_quote == quote) {
+            _quote = null;
+          }
           _session = controller.currentDocument;
           _title = _session?.title ?? _title;
           _providerId = _session?.providerId ?? _providerId;
@@ -333,6 +346,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  void _setReplyQuote(ChatMessage message) {
+    setState(() {
+      _quote = ChatQuoteDraft(
+        messageId: message.id,
+        preview: _compactPreview(message.fullText),
+      );
+    });
+  }
+
+  Future<void> _showEditMessageDialog(ChatMessage message) async {
+    final controller = TextEditingController(text: message.fullText);
+    final editedText = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            labelText: 'Message',
+            alignLabelWithHint: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (editedText == null || editedText.isEmpty || !mounted) {
+      return;
+    }
+
+    setState(() => _isSending = true);
+    try {
+      final chatController = ref.read(chatControllerProvider);
+      await chatController.editUserMessageAndRegenerate(
+        messageId: message.id,
+        text: editedText,
+      );
+      if (mounted) {
+        setState(() {
+          _quote = null;
+          _session = chatController.currentDocument;
+          _title = _session?.title ?? _title;
+          _providerId = _session?.providerId ?? _providerId;
+          _modelId = _session?.modelId ?? _modelId;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  String _compactPreview(String text) {
+    final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.length <= 120) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 117)}...';
   }
 
   String l10nTitle(String text) {

@@ -3,10 +3,31 @@ import 'package:image_picker/image_picker.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-typedef ChatSendCallback = void Function(
-  String text,
-  List<AttachmentRef> attachments,
-);
+class ChatQuoteDraft {
+  const ChatQuoteDraft({
+    required this.messageId,
+    required this.preview,
+  });
+
+  final String messageId;
+  final String preview;
+}
+
+class ChatSendPayload {
+  const ChatSendPayload({
+    required this.text,
+    required this.attachments,
+    this.replyToMessageId,
+    this.replyPreview,
+  });
+
+  final String text;
+  final List<AttachmentRef> attachments;
+  final String? replyToMessageId;
+  final String? replyPreview;
+}
+
+typedef ChatSendCallback = void Function(ChatSendPayload payload);
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({
@@ -14,12 +35,16 @@ class ChatInputBar extends StatefulWidget {
     required this.supportsImages,
     required this.onSend,
     this.enabled = true,
+    this.quote,
+    this.onCancelQuote,
     ImagePicker? imagePicker,
   }) : _imagePicker = imagePicker;
 
   final bool supportsImages;
   final bool enabled;
   final ChatSendCallback onSend;
+  final ChatQuoteDraft? quote;
+  final VoidCallback? onCancelQuote;
   final ImagePicker? _imagePicker;
 
   @override
@@ -72,7 +97,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
       return;
     }
 
-    widget.onSend(_controller.text.trim(), List.unmodifiable(_attachments));
+    final quote = widget.quote;
+    widget.onSend(
+      ChatSendPayload(
+        text: _controller.text.trim(),
+        attachments: List.unmodifiable(_attachments),
+        replyToMessageId: quote?.messageId,
+        replyPreview: quote?.preview,
+      ),
+    );
     setState(() {
       _controller.clear();
       _attachments.clear();
@@ -99,6 +132,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (widget.quote != null)
+                  _QuotePreview(
+                    quote: widget.quote!,
+                    onCancel: widget.onCancelQuote,
+                  ),
                 if (_attachments.isNotEmpty)
                   SizedBox(
                     height: 48,
@@ -150,6 +188,55 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _QuotePreview extends StatelessWidget {
+  const _QuotePreview({
+    required this.quote,
+    required this.onCancel,
+  });
+
+  final ChatQuoteDraft quote;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.primary,
+            width: 3,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              quote.preview,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cancel reply',
+            visualDensity: VisualDensity.compact,
+            onPressed: onCancel,
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
       ),
     );
   }

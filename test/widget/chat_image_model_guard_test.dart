@@ -13,7 +13,7 @@ void main() {
         home: Scaffold(
           body: ChatInputBar(
             supportsImages: false,
-            onSend: (_, __) {},
+            onSend: (_) {},
           ),
         ),
       ),
