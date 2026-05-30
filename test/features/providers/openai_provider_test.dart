@@ -240,6 +240,50 @@ void main() {
     expect(jsonEncode(payload), isNot(contains('unsupported')));
   });
 
+  test('buildOpenAiPayloadWithImages preserves compact context summary',
+      () async {
+    const summaryText = 'Earlier conversation summary:\n- user: old image';
+    final payload = await buildOpenAiPayloadWithImages(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(
+          role: ChatRole.system,
+          parts: const [MessagePart.text(summaryText)],
+        ),
+        _message(
+          role: ChatRole.user,
+          parts: [
+            const MessagePart.text('what about this one?'),
+            MessagePart.image(
+              const AttachmentRef(
+                id: 'current-image',
+                localPath: 'C:\\images\\current.png',
+                mimeType: 'image/png',
+              ),
+            ),
+          ],
+        ),
+      ],
+      stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('current png bytes'),
+    );
+
+    final messages =
+        (payload['messages']! as List<Object?>).cast<Map<String, Object?>>();
+    final summary = messages.first;
+    final current = messages.last;
+    final content = current['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final imageUrl = image['image_url']! as Map<String, Object?>;
+
+    expect(summary['role'], 'system');
+    expect(summary['content'], summaryText);
+    expect(imageUrl['url'], 'data:image/png;base64,Y3VycmVudCBwbmcgYnl0ZXM=');
+    expect(jsonEncode(payload), isNot(contains('C:\\images\\old.png')));
+  });
+
   test('parses OpenAI text delta', () {
     final events = parseOpenAiSse(
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',

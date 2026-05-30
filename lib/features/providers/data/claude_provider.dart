@@ -426,8 +426,22 @@ Iterable<ChatMessage> _claudeHistoryMessages(List<ChatMessage> messages) =>
     messages.where(
       (message) =>
           message.state == MessageState.completed &&
-          (message.role == ChatRole.user || message.role == ChatRole.assistant),
+          (message.role == ChatRole.user ||
+              message.role == ChatRole.assistant ||
+              _isCompactContextSummary(message)),
     );
+
+bool _isCompactContextSummary(ChatMessage message) {
+  if (message.role != ChatRole.system) {
+    return false;
+  }
+  final text = message.parts
+      .where((part) => part.type == MessagePartType.text)
+      .map((part) => part.text ?? '')
+      .join()
+      .trimLeft();
+  return text.startsWith('Earlier conversation summary:');
+}
 
 List<String> _parseClaudeSseEvents(List<SseEvent> events) {
   final deltas = <String>[];

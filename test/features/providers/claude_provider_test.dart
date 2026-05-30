@@ -187,6 +187,52 @@ void main() {
     expect(jsonEncode(payload), isNot(contains('C:\\images\\cat.png')));
   });
 
+  test('buildClaudePayloadWithImages preserves compact context summary',
+      () async {
+    const summaryText = 'Earlier conversation summary:\n- user: old image';
+    final payload = await buildClaudePayloadWithImages(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(
+          role: ChatRole.system,
+          parts: const [MessagePart.text(summaryText)],
+        ),
+        _message(
+          role: ChatRole.user,
+          parts: [
+            const MessagePart.text('what about this one?'),
+            MessagePart.image(
+              const AttachmentRef(
+                id: 'current-image',
+                localPath: 'C:\\images\\current.png',
+                mimeType: 'image/png',
+              ),
+            ),
+          ],
+        ),
+      ],
+      stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('current png bytes'),
+    );
+
+    final messages =
+        (payload['messages']! as List<Object?>).cast<Map<String, Object?>>();
+    final summary = messages.first;
+    final summaryContent = summary['content']! as List<Object?>;
+    final summaryTextBlock = summaryContent.single! as Map<String, Object?>;
+    final current = messages.last;
+    final content = current['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final source = image['source']! as Map<String, Object?>;
+
+    expect(summary['role'], 'user');
+    expect(summaryTextBlock, {'type': 'text', 'text': summaryText});
+    expect(source['data'], 'Y3VycmVudCBwbmcgYnl0ZXM=');
+    expect(jsonEncode(payload), isNot(contains('C:\\images\\old.png')));
+  });
+
   test('sync builder rejects image parts without bytes loader', () {
     expect(
       () => buildClaudePayload(
