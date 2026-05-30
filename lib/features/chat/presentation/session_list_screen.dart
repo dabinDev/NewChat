@@ -99,6 +99,11 @@ class _SessionList extends StatelessWidget {
             onTap: () async {
               if (session.isUnread) {
                 await controller.markRead(session.id);
+                if (context.mounted) {
+                  ProviderScope.containerOf(context).refresh(
+                    sessionListControllerProvider,
+                  );
+                }
               }
               if (context.mounted) {
                 context.go(AppRoutes.chatPath(session.id));

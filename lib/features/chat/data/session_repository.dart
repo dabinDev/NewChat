@@ -15,27 +15,43 @@ abstract interface class SessionRepository {
 
 class InMemorySessionRepository implements SessionRepository {
   final Map<String, ChatSessionDocument> _documents = {};
+  final Set<String> _softDeletedIds = {};
 
   @override
   Future<void> deleteSession(String id) async {
     _documents.remove(id);
+    _softDeletedIds.remove(id);
   }
 
   @override
-  Future<void> softDeleteSession(String id) => deleteSession(id);
+  Future<void> softDeleteSession(String id) async {
+    if (_documents.containsKey(id)) {
+      _softDeletedIds.add(id);
+    }
+  }
 
   @override
-  Future<ChatSessionDocument?> loadDocument(String id) async => _documents[id];
+  Future<ChatSessionDocument?> loadDocument(String id) async {
+    if (_softDeletedIds.contains(id)) {
+      return null;
+    }
+    return _documents[id];
+  }
 
   @override
   Future<List<ChatSessionMeta>> listMetas() async {
-    final metas = _documents.values.map(_toMeta).toList()..sort(_compareMetas);
+    final metas = _documents.entries
+        .where((entry) => !_softDeletedIds.contains(entry.key))
+        .map((entry) => _toMeta(entry.value))
+        .toList()
+      ..sort(_compareMetas);
     return metas;
   }
 
   @override
   Future<void> saveDocument(ChatSessionDocument document) async {
     _documents[document.id] = document;
+    _softDeletedIds.remove(document.id);
   }
 
   ChatSessionMeta _toMeta(ChatSessionDocument document) => document.meta;

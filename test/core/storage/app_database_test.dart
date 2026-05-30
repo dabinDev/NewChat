@@ -132,16 +132,18 @@ void main() {
       statements.add(invocation.positionalArguments.first as String);
     });
     when(() => database.rawQuery('PRAGMA table_info(session_metas)'))
-        .thenAnswer((_) async => [
-              {'name': 'id'},
-              {'name': 'title'},
-              {'name': 'last_message_preview'},
-              {'name': 'provider_id'},
-              {'name': 'model_id'},
-              {'name': 'created_at'},
-              {'name': 'updated_at'},
-              {'name': 'is_deleted'},
-            ]);
+        .thenAnswer(
+      (_) async => [
+        {'name': 'id'},
+        {'name': 'title'},
+        {'name': 'last_message_preview'},
+        {'name': 'provider_id'},
+        {'name': 'model_id'},
+        {'name': 'created_at'},
+        {'name': 'updated_at'},
+        {'name': 'is_deleted'},
+      ],
+    );
 
     final appDatabase = AppDatabase(
       databasesPathProvider: () async => '/tmp',
