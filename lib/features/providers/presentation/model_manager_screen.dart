@@ -6,6 +6,7 @@ import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ModelManagerScreen extends ConsumerStatefulWidget {
   const ModelManagerScreen({super.key});
@@ -18,16 +19,18 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
   @override
   Widget build(BuildContext context) {
     final models = ref.watch(modelListProvider);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         leading: const AppBackButton(fallbackPath: AppRoutes.settings),
-        title: const Text('Models'),
+        title: Text(l10n.models),
       ),
       body: models.when(
         data: _buildModelList,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
-          child: Text('Unable to load models: $error'),
+          child: Text(l10n.unableToLoadModels(error.toString())),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -43,12 +46,13 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
           );
         },
         icon: const Icon(Icons.add),
-        label: const Text('Add model'),
+        label: Text(l10n.addModel),
       ),
     );
   }
 
   Widget _buildModelList(List<ModelConfig> models) {
+    final l10n = AppLocalizations.of(context);
     return ListView.separated(
       padding: const EdgeInsets.all(12),
       itemCount: models.length,
@@ -57,6 +61,13 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
         final model = models[index];
         return Card(
           margin: EdgeInsets.zero,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
           child: ListTile(
             leading: const Icon(Icons.memory_outlined),
             title: Text(
@@ -86,7 +97,7 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
                     },
                   ),
                   PopupMenuButton<_ModelAction>(
-                    tooltip: 'Model actions',
+                    tooltip: l10n.modelActions,
                     onSelected: (action) {
                       switch (action) {
                         case _ModelAction.edit:
@@ -96,19 +107,19 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
                       }
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: _ModelAction.edit,
                         child: ListTile(
-                          leading: Icon(Icons.edit_outlined),
-                          title: Text('Edit'),
+                          leading: const Icon(Icons.edit_outlined),
+                          title: Text(l10n.edit),
                         ),
                       ),
                       if (!isSeedModel(model.id))
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: _ModelAction.delete,
                           child: ListTile(
-                            leading: Icon(Icons.delete_outline),
-                            title: Text('Delete'),
+                            leading: const Icon(Icons.delete_outline),
+                            title: Text(l10n.delete),
                           ),
                         ),
                     ],
@@ -183,6 +194,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -195,17 +207,15 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
         children: [
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Display name',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.displayName,
             ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _idController,
-            decoration: const InputDecoration(
-              labelText: 'Model ID',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.modelId,
             ),
           ),
           const SizedBox(height: 12),
@@ -236,7 +246,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
                 ),
               );
             },
-            title: const Text('Supports images'),
+            title: Text(l10n.supportsImages),
           ),
           FilledButton(
             onPressed: () async {
@@ -251,7 +261,7 @@ class _ModelEditorSheetState extends State<_ModelEditorSheet> {
               }
               Navigator.of(context).pop();
             },
-            child: const Text('Save'),
+            child: Text(l10n.save),
           ),
         ],
       ),

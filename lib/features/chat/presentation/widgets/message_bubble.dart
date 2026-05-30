@@ -5,6 +5,7 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -40,9 +41,8 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final bubbleColor =
-        _isUser ? colorScheme.primaryContainer : colorScheme.surfaceContainer;
-    final foreground =
-        _isUser ? colorScheme.onPrimaryContainer : colorScheme.onSurface;
+        _isUser ? colorScheme.primary : colorScheme.surfaceContainerLowest;
+    final foreground = _isUser ? colorScheme.onPrimary : colorScheme.onSurface;
     final parts = _mergedAdjacentTextParts(message.parts);
 
     return LayoutBuilder(
@@ -99,7 +99,7 @@ class MessageBubble extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            'Edited',
+                            AppLocalizations.of(context).edited,
                             style: Theme.of(context)
                                 .textTheme
                                 .labelSmall
@@ -120,6 +120,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   Future<void> _showMessageActions(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final action = await showModalBottomSheet<_MessageAction>(
       context: context,
       showDragHandle: true,
@@ -130,19 +131,19 @@ class MessageBubble extends StatelessWidget {
             if (_canReply)
               ListTile(
                 leading: const Icon(Icons.reply_outlined),
-                title: const Text('Reply'),
+                title: Text(l10n.reply),
                 onTap: () => Navigator.of(context).pop(_MessageAction.reply),
               ),
             if (_canEdit)
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
-                title: const Text('Edit'),
+                title: Text(l10n.edit),
                 onTap: () => Navigator.of(context).pop(_MessageAction.edit),
               ),
             if (_canEditImage)
               ListTile(
                 leading: const Icon(Icons.auto_fix_high_outlined),
-                title: const Text('Edit Image'),
+                title: Text(l10n.editImage),
                 onTap: () =>
                     Navigator.of(context).pop(_MessageAction.editImage),
               ),
@@ -188,6 +189,7 @@ class _TypingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -201,7 +203,7 @@ class _TypingIndicator extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          'Thinking',
+          l10n.thinking,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -222,6 +224,7 @@ class _BubbleQuotePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       key: const Key('message-reply-block'),
       width: double.infinity,
@@ -252,7 +255,7 @@ class _BubbleQuotePreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _roleLabel(ref?.role),
+                  _roleLabel(l10n, ref?.role),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: foreground.withValues(alpha: 0.78),
                         fontWeight: FontWeight.w700,
@@ -310,12 +313,12 @@ class _ReplyImage extends StatelessWidget {
   }
 }
 
-String _roleLabel(ChatRole? role) {
+String _roleLabel(AppLocalizations l10n, ChatRole? role) {
   return switch (role) {
-    ChatRole.user => 'User',
-    ChatRole.assistant => 'Assistant',
-    ChatRole.system => 'System',
-    null => 'Reply',
+    ChatRole.user => l10n.userRole,
+    ChatRole.assistant => l10n.assistantRole,
+    ChatRole.system => l10n.systemRole,
+    null => l10n.replyRole,
   };
 }
 

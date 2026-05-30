@@ -21,17 +21,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final selectedLanguage = ref.watch(selectedLanguageProvider);
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         leading: const AppBackButton(fallbackPath: AppRoutes.home),
         title: Text(l10n.settings),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
             child: Text(
-              'Providers',
+              l10n.providers,
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
@@ -47,13 +48,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ListTile(
             leading: const Icon(Icons.add_link_outlined),
-            title: const Text('Add provider'),
+            title: Text(l10n.addProvider),
             onTap: () => context.go(AppRoutes.newProvider),
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.memory_outlined),
-            title: const Text('Models'),
+            title: Text(l10n.models),
             onTap: () => context.go(AppRoutes.models),
           ),
           const Divider(),
@@ -61,19 +62,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             value: 'system',
             groupValue: selectedLanguage,
             onChanged: _selectLanguage,
-            title: const Text('System language'),
+            title: Text(l10n.systemLanguage),
           ),
           RadioListTile<String>(
             value: 'zh',
             groupValue: selectedLanguage,
             onChanged: _selectLanguage,
-            title: const Text('Chinese'),
+            title: Text(l10n.chinese),
           ),
           RadioListTile<String>(
             value: 'en',
             groupValue: selectedLanguage,
             onChanged: _selectLanguage,
-            title: const Text('English'),
+            title: Text(l10n.english),
           ),
         ],
       ),

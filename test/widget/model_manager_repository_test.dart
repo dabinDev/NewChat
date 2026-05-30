@@ -8,6 +8,7 @@ import 'package:newchat/features/providers/application/provider_controller.dart'
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:newchat/features/providers/presentation/model_manager_screen.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 void main() {
   testWidgets('model manager saves and deletes through repository',
@@ -29,7 +30,11 @@ void main() {
         overrides: [
           providerRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(home: ModelManagerScreen()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ModelManagerScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -68,7 +73,11 @@ void main() {
         overrides: [
           providerRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(home: ModelManagerScreen()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ModelManagerScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -101,7 +110,11 @@ void main() {
         overrides: [
           providerRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(home: ModelManagerScreen()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ModelManagerScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -138,7 +151,11 @@ void main() {
             _RecordingProviderRepository(),
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
       ),
     );
     await tester.pumpAndSettle();

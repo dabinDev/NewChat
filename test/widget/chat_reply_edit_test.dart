@@ -6,6 +6,24 @@ import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 void main() {
+  testWidgets('input bar localizes add image tooltip', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: ChatInputBar(
+            supportsImages: true,
+            onSend: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byTooltip('添加图片'), findsOneWidget);
+  });
+
   testWidgets('input bar displays quote preview and sends reply metadata',
       (tester) async {
     ChatSendPayload? sentPayload;
@@ -100,6 +118,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MessageBubble(
             message: message,
@@ -127,6 +147,47 @@ void main() {
     expect(edited, same(message));
   });
 
+  testWidgets('message action labels are localized', (tester) async {
+    final message = ChatMessage(
+      id: 'assistant-image',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: [
+        const MessagePart.text('Image result'),
+        MessagePart.image(
+          const AttachmentRef(
+            id: 'image-1',
+            localPath: '/missing/image.png',
+            mimeType: 'image/png',
+          ),
+        ),
+      ],
+      createdAt: DateTime.utc(2026, 5, 30),
+      updatedAt: DateTime.utc(2026, 5, 30),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: MessageBubble(
+            message: message,
+            onReply: (_) {},
+            onImageEdit: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await _longPressBubble(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('回复'), findsOneWidget);
+    expect(find.text('编辑图片'), findsOneWidget);
+  });
+
   testWidgets('assistant bubble exposes reply but not edit', (tester) async {
     final message = _message(
       id: 'assistant-message',
@@ -138,6 +199,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MessageBubble(
             message: message,
@@ -172,6 +235,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MessageBubble(message: message),
         ),
@@ -204,6 +269,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MessageBubble(
             message: message,
@@ -215,7 +282,7 @@ void main() {
 
     await _longPressBubble(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit Image'));
+    await tester.tap(find.text('Edit image'));
     await tester.pumpAndSettle();
 
     expect(imageEdited, same(message));
@@ -242,6 +309,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MessageBubble(message: message),
         ),

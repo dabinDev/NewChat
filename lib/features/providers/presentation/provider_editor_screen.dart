@@ -68,18 +68,18 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
     _ensureSelectedModel(modelOptions);
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         leading: const AppBackButton(fallbackPath: AppRoutes.settings),
-        title: const Text('Provider'),
+        title: Text(l10n.provider),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Provider name',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.providerName,
             ),
           ),
           const SizedBox(height: 16),
@@ -102,9 +102,8 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _baseUrlController,
-            decoration: const InputDecoration(
-              labelText: 'Base URL',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.baseUrl,
             ),
           ),
           const SizedBox(height: 16),
@@ -112,13 +111,11 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
             controller: _apiKeyController,
             obscureText: _obscureKey,
             decoration: InputDecoration(
-              labelText: 'API key',
-              helperText: _hasSavedApiKey
-                  ? 'Saved key is stored. Leave blank to keep it.'
-                  : 'Paste an API key to save it securely.',
-              border: const OutlineInputBorder(),
+              labelText: l10n.apiKey,
+              helperText:
+                  _hasSavedApiKey ? l10n.savedKeyStored : l10n.pasteKeyToSave,
               suffixIcon: IconButton(
-                tooltip: _obscureKey ? 'Show API key' : 'Hide API key',
+                tooltip: _obscureKey ? l10n.showApiKey : l10n.hideApiKey,
                 onPressed: () => setState(() => _obscureKey = !_obscureKey),
                 icon: Icon(
                   _obscureKey
@@ -131,9 +128,8 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _defaultModel,
-            decoration: const InputDecoration(
-              labelText: 'Default model',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.defaultModel,
             ),
             items: [
               for (final model in modelOptions)
@@ -150,14 +146,14 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
             onChanged: (value) {
               setState(() => _clearApiKey = value ?? false);
             },
-            title: const Text('Clear saved API key'),
+            title: Text(l10n.clearSavedApiKey),
             contentPadding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _isSaving ? null : _saveProvider,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Save'),
+            label: Text(l10n.save),
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
@@ -169,7 +165,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
           OutlinedButton.icon(
             onPressed: _isFetchingModels ? null : _fetchModels,
             icon: const Icon(Icons.sync_outlined),
-            label: const Text('Fetch models'),
+            label: Text(l10n.fetchModels),
           ),
         ],
       ),
@@ -223,7 +219,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
           _clearApiKey = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Provider saved.')),
+          SnackBar(content: Text(AppLocalizations.of(context).providerSaved)),
         );
       }
     } finally {

@@ -9,7 +9,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: NewChatApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('NewChat'), findsOneWidget);
+    expect(find.text('newchatbox'), findsOneWidget);
     expect(find.textContaining('provider', findRichText: true), findsWidgets);
     expect(find.byIcon(Icons.settings_outlined), findsWidgets);
     expect(find.text('New chat'), findsOneWidget);

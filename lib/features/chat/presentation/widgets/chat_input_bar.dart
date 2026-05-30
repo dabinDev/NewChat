@@ -130,9 +130,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: colorScheme.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
@@ -153,7 +160,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         return InputChip(
-                          label: Text('Image ${index + 1}'),
+                          avatar: _AttachmentThumb(
+                            attachment: _attachments[index],
+                          ),
+                          label: Text('${l10n.image} ${index + 1}'),
                           onDeleted: () {
                             setState(() => _attachments.removeAt(index));
                           },
@@ -165,7 +175,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     IconButton(
-                      tooltip: 'Add image',
+                      tooltip: l10n.addImage,
                       onPressed: widget.enabled ? _pickImage : null,
                       icon: const Icon(Icons.image_outlined),
                     ),
@@ -178,7 +188,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         textInputAction: TextInputAction.newline,
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
-                          hintText: l10n.send,
+                          hintText: l10n.message,
                           border: InputBorder.none,
                           isDense: true,
                         ),
@@ -211,6 +221,7 @@ class _QuotePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final preview = quote.ref?.textPreview ?? quote.preview;
     return Container(
@@ -248,7 +259,7 @@ class _QuotePreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _roleLabel(quote.ref?.role),
+                  _roleLabel(l10n, quote.ref?.role),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.w700,
@@ -267,7 +278,7 @@ class _QuotePreview extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Cancel reply',
+            tooltip: l10n.cancelReply,
             visualDensity: VisualDensity.compact,
             onPressed: onCancel,
             icon: const Icon(Icons.close, size: 18),
@@ -306,11 +317,36 @@ class _QuoteImage extends StatelessWidget {
   }
 }
 
-String _roleLabel(ChatRole? role) {
+class _AttachmentThumb extends StatelessWidget {
+  const _AttachmentThumb({required this.attachment});
+
+  final AttachmentRef attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: Image.file(
+          File(attachment.localPath),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Icon(Icons.image_outlined, size: 14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _roleLabel(AppLocalizations l10n, ChatRole? role) {
   return switch (role) {
-    ChatRole.user => 'User',
-    ChatRole.assistant => 'Assistant',
-    ChatRole.system => 'System',
-    null => 'Reply',
+    ChatRole.user => l10n.userRole,
+    ChatRole.assistant => l10n.assistantRole,
+    ChatRole.system => l10n.systemRole,
+    null => l10n.replyRole,
   };
 }

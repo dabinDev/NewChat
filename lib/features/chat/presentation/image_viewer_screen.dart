@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 typedef DocumentsDirectoryProvider = Future<Directory> Function();
 typedef ViewerImageBuilder = Widget Function(BuildContext context, File file);
@@ -28,23 +29,27 @@ class ImageViewerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final exists = _fileExists;
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         leading: IconButton(
-          tooltip: 'Back',
+          tooltip: l10n.back,
           onPressed: () => Navigator.of(context).maybePop(),
           icon: const Icon(Icons.arrow_back),
         ),
-        title: const Text('Image'),
+        title: Text(l10n.image),
         actions: [
           IconButton(
-            tooltip: 'Save image',
+            tooltip: l10n.saveImage,
             onPressed: exists ? () => _save(context) : null,
             icon: const Icon(Icons.save_alt_outlined),
           ),
           IconButton(
-            tooltip: 'Edit image prompt',
+            tooltip: l10n.editImagePrompt,
             onPressed:
                 onEditPrompt == null ? null : () => _showEditDialog(context),
             icon: const Icon(Icons.auto_fix_high_outlined),
@@ -75,6 +80,7 @@ class ImageViewerScreen extends StatelessWidget {
   }
 
   Future<void> _save(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     try {
       final documentsDirectory = documentsDirectoryProvider == null
           ? await getApplicationDocumentsDirectory()
@@ -87,14 +93,14 @@ class ImageViewerScreen extends StatelessWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved to ${file.path}')),
+        SnackBar(content: Text(l10n.savedTo(file.path))),
       );
     } on Object {
       if (!context.mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to save image')),
+        SnackBar(content: Text(l10n.unableToSaveImage)),
       );
     }
   }
@@ -152,26 +158,27 @@ class _EditPromptDialogState extends State<_EditPromptDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: const Text('Edit image prompt'),
+      title: Text(l10n.editImagePrompt),
       content: TextField(
         controller: _controller,
         autofocus: true,
         minLines: 3,
         maxLines: 8,
-        decoration: const InputDecoration(
-          labelText: 'Prompt',
+        decoration: InputDecoration(
+          labelText: l10n.prompt,
           alignLabelWithHint: true,
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Generate'),
+          child: Text(l10n.generate),
         ),
       ],
     );
@@ -183,6 +190,7 @@ class _MissingImageState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -194,7 +202,7 @@ class _MissingImageState extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Image file is missing',
+          l10n.imageFileMissing,
           style: Theme.of(context).textTheme.bodyMedium,
         ),
       ],

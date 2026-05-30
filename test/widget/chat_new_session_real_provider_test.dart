@@ -288,7 +288,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Switch Model'));
+    await tester.tap(find.text('Switch model'));
     await tester.pumpAndSettle();
 
     expect(find.text('GPT-4o mini'), findsNothing);

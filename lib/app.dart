@@ -57,16 +57,89 @@ class NewChatApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const primary = Color(0xFF123C44);
+    const secondary = Color(0xFFE0B84D);
+    const surface = Color(0xFFF7F4EC);
+    const radius = Radius.circular(8);
+    final scheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      primary: primary,
+      secondary: secondary,
+      surface: surface,
+      brightness: Brightness.light,
+    );
+
     return MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: const [
-        Locale('en'),
-        Locale('zh'),
-      ],
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: scheme,
         useMaterial3: true,
+        scaffoldBackgroundColor: surface,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: surface,
+          foregroundColor: primary,
+          centerTitle: false,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+        ),
+        cardTheme: const CardTheme(
+          color: Colors.white,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(radius),
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: secondary,
+          foregroundColor: Color(0xFF1D1B16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(radius),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: secondary,
+            foregroundColor: const Color(0xFF1D1B16),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(radius),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: primary,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(radius),
+            ),
+          ),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(radius),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(radius),
+            borderSide: BorderSide(color: Color(0xFFD8D0C0)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(radius),
+            borderSide: BorderSide(color: primary, width: 1.4),
+          ),
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(radius),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: radius),
+          ),
+        ),
       ),
       routerConfig: _router,
     );

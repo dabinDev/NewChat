@@ -18,6 +18,7 @@ class SessionListScreen extends ConsumerWidget {
     final sessions = ref.watch(sessionListControllerProvider);
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: Text(l10n.appTitle),
         actions: [
@@ -64,21 +65,37 @@ class _SessionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final controller = SessionListController(
       repository: ProviderScope.containerOf(context).read(
         sessionRepositoryProvider,
       ),
     );
     return ListView.separated(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
       itemCount: sessions.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final session = sessions[index];
         return Card(
           margin: EdgeInsets.zero,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(
+              color: session.isUnread
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
+          ),
           child: ListTile(
-            leading: const Icon(Icons.chat_bubble_outline),
+            contentPadding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+            leading: Icon(
+              Icons.chat_bubble_outline,
+              color: session.isUnread
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+            ),
             title: Text(
               session.title,
               maxLines: 1,
@@ -127,6 +144,7 @@ class _SessionTrailing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -142,12 +160,16 @@ class _SessionTrailing extends StatelessWidget {
             ),
           ),
         if (session.isPinned)
-          const Padding(
-            padding: EdgeInsets.only(right: 4),
-            child: Icon(Icons.push_pin_outlined, size: 18),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(
+              Icons.push_pin_outlined,
+              size: 18,
+              color: Theme.of(context).colorScheme.secondary,
+            ),
           ),
         PopupMenuButton<_SessionAction>(
-          tooltip: 'Session actions',
+          tooltip: l10n.sessionActions,
           onSelected: (action) => _handleAction(context, action),
           itemBuilder: (context) => [
             PopupMenuItem(
@@ -157,7 +179,7 @@ class _SessionTrailing extends StatelessWidget {
                 leading: Icon(
                   session.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                 ),
-                title: Text(session.isPinned ? 'Unpin' : 'Pin'),
+                title: Text(session.isPinned ? l10n.unpin : l10n.pin),
               ),
             ),
             PopupMenuItem(
@@ -170,14 +192,16 @@ class _SessionTrailing extends StatelessWidget {
                       ? Icons.mark_chat_read_outlined
                       : Icons.mark_chat_unread_outlined,
                 ),
-                title: Text(session.isUnread ? 'Mark read' : 'Mark unread'),
+                title: Text(
+                  session.isUnread ? l10n.markRead : l10n.markUnread,
+                ),
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: _SessionAction.delete,
               child: ListTile(
-                leading: Icon(Icons.delete_outline),
-                title: Text('Delete'),
+                leading: const Icon(Icons.delete_outline),
+                title: Text(l10n.delete),
               ),
             ),
           ],
@@ -238,8 +262,8 @@ class _EmptyProviderState extends StatelessWidget {
               style: textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Provider settings are required before a chat can send.',
+            Text(
+              l10n.providerRequiredDetails,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),

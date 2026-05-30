@@ -61,6 +61,12 @@ void main() {
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
   });
 
+  testWidgets('session list shows localized app title', (tester) async {
+    await _pumpSessionList(tester, InMemorySessionRepository());
+
+    expect(find.text('newchatbox'), findsOneWidget);
+  });
+
   testWidgets('chat header handles long title and model on narrow screens',
       (tester) async {
     final session = demoChatSession.copyWith(
@@ -154,7 +160,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final inputBottom = tester.getBottomLeft(find.text('Send')).dy;
+    final inputBottom = tester.getBottomLeft(find.byTooltip('Send')).dy;
 
     expect(tester.takeException(), isNull);
     expect(inputBottom, lessThan(420));

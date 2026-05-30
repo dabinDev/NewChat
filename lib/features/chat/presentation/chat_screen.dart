@@ -84,6 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scheduleScrollIfMessagesChanged(session);
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         toolbarHeight: 64,
         leading: const AppBackButton(fallbackPath: AppRoutes.home),
@@ -109,33 +110,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         actions: [
           PopupMenuButton<_ChatAction>(
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem(
                 value: _ChatAction.rename,
                 child: ListTile(
-                  leading: Icon(Icons.edit_outlined),
-                  title: Text('Rename'),
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text(l10n.rename),
                 ),
               ),
               PopupMenuItem(
                 value: _ChatAction.systemPrompt,
                 child: ListTile(
-                  leading: Icon(Icons.tune_outlined),
-                  title: Text('System Prompt'),
+                  leading: const Icon(Icons.tune_outlined),
+                  title: Text(l10n.systemPrompt),
                 ),
               ),
               PopupMenuItem(
                 value: _ChatAction.switchModel,
                 child: ListTile(
-                  leading: Icon(Icons.swap_horiz_outlined),
-                  title: Text('Switch Model'),
+                  leading: const Icon(Icons.swap_horiz_outlined),
+                  title: Text(l10n.switchModel),
                 ),
               ),
               PopupMenuItem(
                 value: _ChatAction.delete,
                 child: ListTile(
-                  leading: Icon(Icons.delete_outline),
-                  title: Text('Delete'),
+                  leading: const Icon(Icons.delete_outline),
+                  title: Text(l10n.delete),
                 ),
               ),
             ],
@@ -148,7 +149,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
               itemCount: session.messages.length,
               itemBuilder: (context, index) {
                 return MessageBubble(
@@ -168,10 +169,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (!_hasProvider)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    'Add a provider in Settings before starting a new chat.',
+                    l10n.addProviderBeforeStarting,
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -200,7 +201,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: TextButton.icon(
                       onPressed: _isSending ? null : _retryLastAssistant,
                       icon: const Icon(Icons.replay_outlined),
-                      label: const Text('Continue'),
+                      label: Text(l10n.continueAction),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
@@ -385,29 +386,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showEditMessageDialog(ChatMessage message) async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: message.fullText);
     final editedText = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit message'),
+        title: Text(l10n.editMessage),
         content: TextField(
           controller: controller,
           autofocus: true,
           minLines: 3,
           maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Message',
+          decoration: InputDecoration(
+            labelText: l10n.message,
             alignLabelWithHint: true,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(l10n.save),
           ),
         ],
       ),
@@ -460,31 +462,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showImageEditPromptDialog(ChatMessage imageMessage) async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(
       text: _nearestPromptFor(imageMessage),
     );
     final prompt = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit image prompt'),
+        title: Text(l10n.editImagePrompt),
         content: TextField(
           controller: controller,
           autofocus: true,
           minLines: 3,
           maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Prompt',
+          decoration: InputDecoration(
+            labelText: l10n.prompt,
             alignLabelWithHint: true,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Generate'),
+            child: Text(l10n.generate),
           ),
         ],
       ),
@@ -616,24 +619,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showRenameDialog() async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: _title);
     final newTitle = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename chat'),
+        title: Text(l10n.renameChat),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Title'),
+          decoration: InputDecoration(labelText: l10n.title),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Save'),
+            child: Text(l10n.save),
           ),
         ],
       ),
@@ -646,6 +650,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showSwitchModelSheet() async {
+    final l10n = AppLocalizations.of(context);
     final providers =
         await ref.read(providerControllerProvider).listProviders();
     final models = await ref.read(providerControllerProvider).listModels();
@@ -656,7 +661,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (selections.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No compatible models are configured.')),
+        SnackBar(content: Text(l10n.noCompatibleModels)),
       );
       return;
     }
@@ -681,7 +686,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               title: Text(model.displayName),
               subtitle: Text(
                 '${provider.name} / ${model.id}'
-                '${model.effectiveSupportsImages ? ' / Images' : ' / Text only'}',
+                '${model.effectiveSupportsImages ? ' / ${l10n.images}' : ' / ${l10n.textOnly}'}',
               ),
               selected: provider.id == _providerId && model.id == _modelId,
               onTap: () => Navigator.of(context).pop(selection),
@@ -713,19 +718,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showDeleteDialog() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete chat?'),
-        content: const Text('This demo chat will be marked deleted locally.'),
+        title: Text(l10n.deleteChatQuestion),
+        content: Text(l10n.deleteChatMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -733,7 +739,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (confirmed == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chat deleted locally')),
+        SnackBar(content: Text(l10n.chatDeletedLocally)),
       );
     }
   }
