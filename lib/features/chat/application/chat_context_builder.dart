@@ -50,8 +50,9 @@ class ChatContextBuilder {
         _providerMessage(
           message,
           preserveImages: message.id == latestUserId,
-          addQuotePreface:
-              message.role == ChatRole.user && _hasText(message.replyPreview),
+          addQuotePreface: message.id == latestUserId &&
+              message.role == ChatRole.user &&
+              _hasText(message.replyPreview),
         ),
     ];
 

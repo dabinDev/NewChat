@@ -94,7 +94,7 @@ void main() {
     expect(imageIds, ['latest-user-image']);
   });
 
-  test('adds quote preface to every recent replied user turn only', () {
+  test('adds quote preface to latest replied user turn only', () {
     final result = ChatContextBuilder(recentMessageLimit: 4).build(
       _document(
         messages: [
@@ -124,9 +124,6 @@ void main() {
       result.messages
           .singleWhere((message) => message.id == 'older-reply')
           .fullText,
-      'The user is replying to this earlier message:\n'
-      '"Berlin"\n\n'
-      'User message:\n'
       'older why?',
     );
     expect(
