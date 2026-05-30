@@ -75,7 +75,9 @@ void main() {
     expect(imagePart.attachment!.mimeType, 'image/png');
     expect(imagePart.attachment!.fileSize, 3);
     expect(
-        await File(imagePart.attachment!.localPath).readAsBytes(), [1, 2, 3]);
+      await File(imagePart.attachment!.localPath).readAsBytes(),
+      [1, 2, 3],
+    );
   });
 
   test('sendMessage stores reply metadata and sends quote preface', () async {
@@ -259,17 +261,20 @@ why?''');
       ],
     );
     await repository.saveDocument(
-      _document(id: 'session-1', messages: [
-        user,
-        ChatMessage(
-          id: 'assistant-1',
-          role: ChatRole.assistant,
-          state: MessageState.failed,
-          parts: const [MessagePart.text('old answer')],
-          createdAt: DateTime.utc(2026, 5, 30, 8),
-          updatedAt: DateTime.utc(2026, 5, 30, 8),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          user,
+          ChatMessage(
+            id: 'assistant-1',
+            role: ChatRole.assistant,
+            state: MessageState.failed,
+            parts: const [MessagePart.text('old answer')],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+        ],
+      ),
     );
     final controller = ChatController(
       repository: repository,
@@ -312,25 +317,28 @@ why?''');
       updatedAt: DateTime.utc(2026, 5, 30, 8),
     );
     await repository.saveDocument(
-      _document(id: 'session-1', messages: [
-        user,
-        ChatMessage(
-          id: 'assistant-old',
-          role: ChatRole.assistant,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('old answer')],
-          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
-          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
-        ),
-        ChatMessage(
-          id: 'user-later',
-          role: ChatRole.user,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('later prompt')],
-          createdAt: DateTime.utc(2026, 5, 30, 8, 2),
-          updatedAt: DateTime.utc(2026, 5, 30, 8, 2),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          user,
+          ChatMessage(
+            id: 'assistant-old',
+            role: ChatRole.assistant,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('old answer')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+          ChatMessage(
+            id: 'user-later',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('later prompt')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 2),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 2),
+          ),
+        ],
+      ),
     );
     final fakeProvider = FakeChatProvider(const [
       ChatStreamDelta('new answer'),
@@ -410,17 +418,20 @@ why?''');
       updatedAt: DateTime.utc(2026, 5, 30, 8),
     );
     repository.seed(
-      _document(id: 'session-1', messages: [
-        user,
-        ChatMessage(
-          id: 'assistant-old',
-          role: ChatRole.assistant,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('old answer')],
-          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
-          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          user,
+          ChatMessage(
+            id: 'assistant-old',
+            role: ChatRole.assistant,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('old answer')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+        ],
+      ),
     );
     final controller = ChatController(
       repository: repository,
@@ -443,8 +454,10 @@ why?''');
       text: 'edited prompt after failure',
     );
 
-    expect(controller.currentDocument!.messages.first.fullText,
-        'edited prompt after failure');
+    expect(
+      controller.currentDocument!.messages.first.fullText,
+      'edited prompt after failure',
+    );
   });
 
   test('editUserMessageAndRegenerate rejects non-completed user messages',
@@ -457,16 +470,19 @@ why?''');
     ]) {
       final repository = InMemorySessionRepository();
       await repository.saveDocument(
-        _document(id: 'session-$state', messages: [
-          ChatMessage(
-            id: 'user-1',
-            role: ChatRole.user,
-            state: state,
-            parts: const [MessagePart.text('hello')],
-            createdAt: DateTime.utc(2026, 5, 30),
-            updatedAt: DateTime.utc(2026, 5, 30),
-          ),
-        ]),
+        _document(
+          id: 'session-$state',
+          messages: [
+            ChatMessage(
+              id: 'user-1',
+              role: ChatRole.user,
+              state: state,
+              parts: const [MessagePart.text('hello')],
+              createdAt: DateTime.utc(2026, 5, 30),
+              updatedAt: DateTime.utc(2026, 5, 30),
+            ),
+          ],
+        ),
       );
       final controller = ChatController(
         repository: repository,
@@ -488,16 +504,19 @@ why?''');
   test('editUserMessageAndRegenerate rejects assistant messages', () async {
     final repository = InMemorySessionRepository();
     await repository.saveDocument(
-      _document(id: 'session-1', messages: [
-        ChatMessage(
-          id: 'assistant-1',
-          role: ChatRole.assistant,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('answer')],
-          createdAt: DateTime.utc(2026, 5, 30),
-          updatedAt: DateTime.utc(2026, 5, 30),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          ChatMessage(
+            id: 'assistant-1',
+            role: ChatRole.assistant,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('answer')],
+            createdAt: DateTime.utc(2026, 5, 30),
+            updatedAt: DateTime.utc(2026, 5, 30),
+          ),
+        ],
+      ),
     );
     final controller = ChatController(
       repository: repository,
@@ -519,16 +538,19 @@ why?''');
       () async {
     final repository = InMemorySessionRepository();
     await repository.saveDocument(
-      _document(id: 'session-1', messages: [
-        ChatMessage(
-          id: 'user-1',
-          role: ChatRole.user,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('hello')],
-          createdAt: DateTime.utc(2026, 5, 30),
-          updatedAt: DateTime.utc(2026, 5, 30),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          ChatMessage(
+            id: 'user-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('hello')],
+            createdAt: DateTime.utc(2026, 5, 30),
+            updatedAt: DateTime.utc(2026, 5, 30),
+          ),
+        ],
+      ),
     );
     final controller = ChatController(
       repository: repository,
@@ -565,27 +587,30 @@ why?''');
       mimeType: 'image/png',
     );
     await repository.saveDocument(
-      _document(id: 'session-1', messages: [
-        ChatMessage(
-          id: 'old-user',
-          role: ChatRole.user,
-          state: MessageState.completed,
-          parts: [
-            const MessagePart.text('old image prompt'),
-            MessagePart.image(oldImage),
-          ],
-          createdAt: DateTime.utc(2026, 5, 30, 8),
-          updatedAt: DateTime.utc(2026, 5, 30, 8),
-        ),
-        ChatMessage(
-          id: 'old-assistant',
-          role: ChatRole.assistant,
-          state: MessageState.completed,
-          parts: const [MessagePart.text('old answer')],
-          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
-          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
-        ),
-      ]),
+      _document(
+        id: 'session-1',
+        messages: [
+          ChatMessage(
+            id: 'old-user',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: [
+              const MessagePart.text('old image prompt'),
+              MessagePart.image(oldImage),
+            ],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+          ChatMessage(
+            id: 'old-assistant',
+            role: ChatRole.assistant,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('old answer')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+        ],
+      ),
     );
     final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
     final controller = ChatController(
