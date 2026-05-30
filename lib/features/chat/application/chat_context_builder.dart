@@ -31,19 +31,20 @@ class ChatContextBuilder {
         completed.length > recentCount ? completed.length - recentCount : 0;
     final older = completed.take(splitIndex);
     final recent = completed.skip(splitIndex).toList();
+    final existingSummary = _normalizedSummary(document.contextSummary);
     final summaryParts = [
-      if (_hasText(document.contextSummary)) document.contextSummary!.trim(),
-      for (final message in older)
-        if (_compactText(message.fullText).isNotEmpty)
-          '- ${message.role.name}: ${_truncate(_compactText(message.fullText))}',
+      if (existingSummary != null) existingSummary,
+      if (existingSummary == null)
+        for (final message in older)
+          if (_compactText(message.fullText).isNotEmpty)
+            '- ${message.role.name}: ${_truncate(_compactText(message.fullText))}',
     ];
     final summary = summaryParts.isEmpty ? null : summaryParts.join('\n');
     final latestUserId = completed.reversed
         .where((message) => message.role == ChatRole.user)
         .map((message) => message.id)
         .firstOrNull;
-    final summaryChanged = summary != null &&
-        summary != _normalizedSummary(document.contextSummary);
+    final summaryChanged = summary != null && summary != existingSummary;
     final providerMessages = [
       if (summary != null) _summaryMessage(summary),
       for (final message in recent)

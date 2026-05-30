@@ -361,6 +361,54 @@ why?''');
     await events.close();
   });
 
+  test('edit save failure clears generation lock for later edits', () async {
+    final repository = ThrowingSaveSessionRepository();
+    final user = ChatMessage(
+      id: 'user-1',
+      role: ChatRole.user,
+      state: MessageState.completed,
+      parts: const [MessagePart.text('original prompt')],
+      createdAt: DateTime.utc(2026, 5, 30, 8),
+      updatedAt: DateTime.utc(2026, 5, 30, 8),
+    );
+    repository.seed(
+      _document(id: 'session-1', messages: [
+        user,
+        ChatMessage(
+          id: 'assistant-old',
+          role: ChatRole.assistant,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('old answer')],
+          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+        ),
+      ]),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const [ChatStreamDone()]),
+    );
+
+    await controller.loadSession('session-1');
+    repository.throwOnSave = true;
+    await expectLater(
+      controller.editUserMessageAndRegenerate(
+        messageId: 'user-1',
+        text: 'edited prompt',
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    repository.throwOnSave = false;
+    await controller.editUserMessageAndRegenerate(
+      messageId: 'user-1',
+      text: 'edited prompt after failure',
+    );
+
+    expect(controller.currentDocument!.messages.first.fullText,
+        'edited prompt after failure');
+  });
+
   test('editUserMessageAndRegenerate rejects non-completed user messages',
       () async {
     for (final state in [
@@ -731,6 +779,78 @@ why?''');
     expect(messages.last.fullText, 'retry ok');
   });
 
+  test('retryLastFailed validates retained user images before provider call',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    await repository.saveDocument(
+      _document(
+        id: 'session-1',
+        providerId: 'provider-1',
+        modelId: 'text-only',
+        messages: [
+          ChatMessage(
+            id: 'user-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: [
+              const MessagePart.text('describe this'),
+              MessagePart.image(
+                const AttachmentRef(
+                  id: 'image-1',
+                  localPath: '/tmp/image.png',
+                  mimeType: 'image/png',
+                ),
+              ),
+            ],
+            createdAt: DateTime.utc(2026, 5, 30, 8),
+            updatedAt: DateTime.utc(2026, 5, 30, 8),
+          ),
+          ChatMessage(
+            id: 'assistant-1',
+            role: ChatRole.assistant,
+            state: MessageState.failed,
+            parts: const [MessagePart.error('Generation failed.')],
+            createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+            updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+          ),
+        ],
+      ),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'text-only',
+          ),
+        ],
+        models: [
+          _model(
+            'text-only',
+            ProviderProtocol.openai,
+            supportsImages: false,
+          ),
+        ],
+      ),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.retryLastFailed();
+
+    final assistant = controller.currentDocument!.messages.last;
+    expect(assistant.role, ChatRole.assistant);
+    expect(assistant.state, MessageState.failed);
+    expect(
+      assistant.parts.single.text,
+      'The selected model does not support images.',
+    );
+    expect(fakeProvider.requests, isEmpty);
+  });
+
   test('retryLastFailed throws while generation is active', () async {
     final events = StreamController<ChatStreamEvent>();
     final controller = ChatController(
@@ -1030,6 +1150,32 @@ class SequentialChatProvider implements ChatProvider {
     ConnectionTestRequest request,
   ) async {
     return const ConnectionTestResult.success();
+  }
+}
+
+class ThrowingSaveSessionRepository implements SessionRepository {
+  final _delegate = InMemorySessionRepository();
+  var throwOnSave = false;
+
+  Future<void> seed(ChatSessionDocument document) =>
+      _delegate.saveDocument(document);
+
+  @override
+  Future<void> deleteSession(String id) => _delegate.deleteSession(id);
+
+  @override
+  Future<ChatSessionDocument?> loadDocument(String id) =>
+      _delegate.loadDocument(id);
+
+  @override
+  Future<List<ChatSessionMeta>> listMetas() => _delegate.listMetas();
+
+  @override
+  Future<void> saveDocument(ChatSessionDocument document) {
+    if (throwOnSave) {
+      throw StateError('save failed');
+    }
+    return _delegate.saveDocument(document);
   }
 }
 

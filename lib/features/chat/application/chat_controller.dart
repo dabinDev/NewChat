@@ -184,34 +184,33 @@ class ChatController extends ChangeNotifier {
     }
 
     _generationInProgress = true;
-    final now = DateTime.now().toUtc();
-    final imageParts = original.parts
-        .where((part) => part.type == MessagePartType.image)
-        .toList();
-    final editedMessage = _copyMessage(
-      original,
-      parts: [MessagePart.text(trimmedText), ...imageParts],
-      updatedAt: now,
-      editedAt: now,
-      editHistory: [
-        ...original.editHistory,
-        MessageEditEntry(text: original.fullText, editedAt: now),
-      ],
-    );
-
-    _setCurrentDocument(
-      _copyDocument(
-        document,
-        messages: [
-          ...document.messages.take(messageIndex),
-          editedMessage,
-        ],
-        updatedAt: now,
-      ),
-    );
-    await _repository.saveDocument(_currentDocument!);
-
     try {
+      final now = DateTime.now().toUtc();
+      final imageParts = original.parts
+          .where((part) => part.type == MessagePartType.image)
+          .toList();
+      final editedMessage = _copyMessage(
+        original,
+        parts: [MessagePart.text(trimmedText), ...imageParts],
+        updatedAt: now,
+        editedAt: now,
+        editHistory: [
+          ...original.editHistory,
+          MessageEditEntry(text: original.fullText, editedAt: now),
+        ],
+      );
+
+      _setCurrentDocument(
+        _copyDocument(
+          document,
+          messages: [
+            ...document.messages.take(messageIndex),
+            editedMessage,
+          ],
+          updatedAt: now,
+        ),
+      );
+      await _repository.saveDocument(_currentDocument!);
       await _streamAssistantResponse(
         hasImageAttachments: imageParts.isNotEmpty,
       );
@@ -283,7 +282,9 @@ class ChatController extends ChangeNotifier {
         ),
       );
       await _repository.saveDocument(_currentDocument!);
-      await _streamAssistantResponse(hasImageAttachments: false);
+      await _streamAssistantResponse(
+        hasImageAttachments: _hasImageAttachments(previous),
+      );
     } finally {
       _generationInProgress = false;
     }
@@ -671,3 +672,6 @@ List<MessagePart> _appendMessagePart(
     MessagePart.text('${parts.last.text ?? ''}${nextPart.text ?? ''}'),
   ];
 }
+
+bool _hasImageAttachments(ChatMessage message) =>
+    message.parts.any((part) => part.type == MessagePartType.image);

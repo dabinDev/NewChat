@@ -248,6 +248,40 @@ void main() {
     );
   });
 
+  test('does not append older summary lines when existing summary is stable',
+      () {
+    final summaryUpdatedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final messages = [
+      for (var index = 0; index < 15; index++)
+        _message(
+          id: 'message-$index',
+          role: index.isEven ? ChatRole.user : ChatRole.assistant,
+          text: 'older text $index',
+          createdAt: DateTime.utc(2026, 5, 30, 0, index),
+        ),
+    ];
+
+    final first = const ChatContextBuilder().build(
+      _document(
+        messages: messages,
+        contextSummary: 'Existing compact summary.',
+        contextSummaryUpdatedAt: summaryUpdatedAt,
+      ),
+    );
+    final second = const ChatContextBuilder().build(
+      _document(
+        messages: messages,
+        contextSummary: first.summary,
+        contextSummaryUpdatedAt: first.summaryUpdatedAt,
+      ),
+    );
+
+    expect(first.summary, 'Existing compact summary.');
+    expect(second.summary, 'Existing compact summary.');
+    expect(second.summary, isNot(contains('- user: older text 0')));
+    expect(second.summaryUpdatedAt, summaryUpdatedAt);
+  });
+
   test('fills missing timestamp when unchanged summary exists', () {
     final result = const ChatContextBuilder().build(
       _document(
