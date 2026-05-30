@@ -330,6 +330,74 @@ why?''');
     );
   });
 
+  test('editUserMessageAndRegenerate throws during generation', () async {
+    final repository = InMemorySessionRepository();
+    final events = StreamController<ChatStreamEvent>();
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: ControlledChatProvider(events.stream),
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    final sendFuture =
+        controller.sendMessage(text: 'hi', attachments: const []);
+    await pumpEventQueue();
+    final userMessageId = controller.currentDocument!.messages.first.id;
+
+    await expectLater(
+      controller.editUserMessageAndRegenerate(
+        messageId: userMessageId,
+        text: 'edited',
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    events.add(const ChatStreamDone());
+    await sendFuture;
+    await events.close();
+  });
+
+  test('editUserMessageAndRegenerate rejects non-completed user messages',
+      () async {
+    for (final state in [
+      MessageState.cancelled,
+      MessageState.interrupted,
+      MessageState.streaming,
+    ]) {
+      final repository = InMemorySessionRepository();
+      await repository.saveDocument(
+        _document(id: 'session-$state', messages: [
+          ChatMessage(
+            id: 'user-1',
+            role: ChatRole.user,
+            state: state,
+            parts: const [MessagePart.text('hello')],
+            createdAt: DateTime.utc(2026, 5, 30),
+            updatedAt: DateTime.utc(2026, 5, 30),
+          ),
+        ]),
+      );
+      final controller = ChatController(
+        repository: repository,
+        chatProvider: FakeChatProvider(const [ChatStreamDone()]),
+      );
+
+      await controller.loadSession('session-$state');
+
+      await expectLater(
+        controller.editUserMessageAndRegenerate(
+          messageId: 'user-1',
+          text: 'edited',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    }
+  });
+
   test('editUserMessageAndRegenerate rejects assistant messages', () async {
     final repository = InMemorySessionRepository();
     await repository.saveDocument(
