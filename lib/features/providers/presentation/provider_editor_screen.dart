@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/core/routing/app_back_button.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
 import 'package:uuid/uuid.dart';
@@ -66,7 +68,7 @@ class _ProviderEditorScreenState extends ConsumerState<ProviderEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
+        leading: const AppBackButton(fallbackPath: AppRoutes.settings),
         title: const Text('Provider'),
       ),
       body: ListView(

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:newchat/core/routing/app_back_button.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 
 class SystemPromptScreen extends StatefulWidget {
   const SystemPromptScreen({
@@ -31,7 +33,9 @@ class _SystemPromptScreenState extends State<SystemPromptScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
+        leading: AppBackButton(
+          fallbackPath: AppRoutes.chatPath(widget.sessionId),
+        ),
         title: const Text('System Prompt'),
       ),
       body: Padding(

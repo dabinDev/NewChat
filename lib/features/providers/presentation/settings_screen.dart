@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_back_button.dart';
 import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -21,7 +22,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
+        leading: const AppBackButton(fallbackPath: AppRoutes.home),
         title: Text(l10n.settings),
       ),
       body: ListView(

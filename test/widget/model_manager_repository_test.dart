@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
@@ -109,6 +111,42 @@ void main() {
 
     expect(find.text('Edit'), findsOneWidget);
     expect(find.text('Delete'), findsNothing);
+  });
+
+  testWidgets('back button falls back to settings when opened directly',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.models,
+      routes: [
+        GoRoute(
+          path: AppRoutes.settings,
+          builder: (context, state) => const Scaffold(
+            body: Center(child: Text('Settings target')),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.models,
+          builder: (context, state) => const ModelManagerScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          providerRepositoryProvider.overrideWithValue(
+            _RecordingProviderRepository(),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings target'), findsOneWidget);
   });
 }
 

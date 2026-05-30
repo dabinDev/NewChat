@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/core/routing/app_back_button.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/providers/application/provider_controller.dart';
 import 'package:newchat/features/providers/data/provider_repository.dart';
 import 'package:newchat/features/providers/domain/provider_models.dart';
@@ -18,7 +20,7 @@ class _ModelManagerScreenState extends ConsumerState<ModelManagerScreen> {
     final models = ref.watch(modelListProvider);
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
+        leading: const AppBackButton(fallbackPath: AppRoutes.settings),
         title: const Text('Models'),
       ),
       body: models.when(
