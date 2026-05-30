@@ -123,4 +123,58 @@ void main() {
     expect(openCount, 2);
     verify(firstDatabase.close).called(1);
   });
+
+  test('open creates idempotent session meta flag columns', () async {
+    final database = _MockDatabase();
+    final statements = <String>[];
+    when(() => database.isOpen).thenReturn(true);
+    when(() => database.execute(any())).thenAnswer((invocation) async {
+      statements.add(invocation.positionalArguments.first as String);
+    });
+    when(() => database.rawQuery('PRAGMA table_info(session_metas)'))
+        .thenAnswer((_) async => [
+              {'name': 'id'},
+              {'name': 'title'},
+              {'name': 'last_message_preview'},
+              {'name': 'provider_id'},
+              {'name': 'model_id'},
+              {'name': 'created_at'},
+              {'name': 'updated_at'},
+              {'name': 'is_deleted'},
+            ]);
+
+    final appDatabase = AppDatabase(
+      databasesPathProvider: () async => '/tmp',
+      databaseOpener: (
+        _, {
+        required onCreate,
+        required onOpen,
+        required version,
+      }) async {
+        await onOpen(database);
+        return database;
+      },
+    );
+
+    await appDatabase.open();
+
+    expect(
+      statements,
+      contains(
+        'ALTER TABLE session_metas '
+        'ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0',
+      ),
+    );
+    expect(
+      statements,
+      contains('ALTER TABLE session_metas ADD COLUMN pinned_at TEXT NULL'),
+    );
+    expect(
+      statements,
+      contains(
+        'ALTER TABLE session_metas '
+        'ADD COLUMN is_unread INTEGER NOT NULL DEFAULT 0',
+      ),
+    );
+  });
 }

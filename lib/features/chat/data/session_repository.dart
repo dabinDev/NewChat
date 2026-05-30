@@ -10,6 +10,7 @@ abstract interface class SessionRepository {
   Future<ChatSessionDocument?> loadDocument(String id);
   Future<void> saveDocument(ChatSessionDocument document);
   Future<void> deleteSession(String id);
+  Future<void> softDeleteSession(String id);
 }
 
 class InMemorySessionRepository implements SessionRepository {
@@ -19,6 +20,9 @@ class InMemorySessionRepository implements SessionRepository {
   Future<void> deleteSession(String id) async {
     _documents.remove(id);
   }
+
+  @override
+  Future<void> softDeleteSession(String id) => deleteSession(id);
 
   @override
   Future<ChatSessionDocument?> loadDocument(String id) async => _documents[id];
@@ -53,6 +57,17 @@ class PersistentSessionRepository implements SessionRepository {
     );
     await database.delete(
       'session_metas',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<void> softDeleteSession(String id) async {
+    final database = await _appDatabase.open();
+    await database.update(
+      'session_metas',
+      {'is_deleted': 1},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -98,10 +113,13 @@ id = ? AND EXISTS (
         'created_at',
         'updated_at',
         'is_deleted',
+        'is_pinned',
+        'pinned_at',
+        'is_unread',
       ],
       where: 'is_deleted = ?',
       whereArgs: const [0],
-      orderBy: 'updated_at DESC',
+      orderBy: 'is_pinned DESC, pinned_at DESC, updated_at DESC',
     );
     return rows.map(_metaFromRow).toList();
   }
@@ -134,6 +152,9 @@ id = ? AND EXISTS (
         'created_at': meta.createdAt.toIso8601String(),
         'updated_at': meta.updatedAt.toIso8601String(),
         'is_deleted': meta.isDeleted ? 1 : 0,
+        'is_pinned': meta.isPinned ? 1 : 0,
+        'pinned_at': meta.pinnedAt?.toIso8601String(),
+        'is_unread': meta.isUnread ? 1 : 0,
       };
 
   ChatSessionMeta _metaFromRow(Map<String, Object?> row) => ChatSessionMeta(
@@ -145,6 +166,11 @@ id = ? AND EXISTS (
         createdAt: DateTime.parse(row['created_at']! as String),
         updatedAt: DateTime.parse(row['updated_at']! as String),
         isDeleted: (row['is_deleted']! as int) != 0,
+        isPinned: (row['is_pinned']! as int) != 0,
+        pinnedAt: row['pinned_at'] == null
+            ? null
+            : DateTime.parse(row['pinned_at']! as String),
+        isUnread: (row['is_unread']! as int) != 0,
         schemaVersion: AppConstants.schemaVersion,
       );
 }

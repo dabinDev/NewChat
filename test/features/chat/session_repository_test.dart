@@ -237,6 +237,252 @@ void main() {
     ]);
   });
 
+  test('persistent listMetas orders pinned sessions before recent unpinned',
+      () async {
+    final appDatabase = _MockAppDatabase();
+    final database = _MockDatabase();
+    final pinnedAt = DateTime.utc(2026, 5, 30, 1, 30).toIso8601String();
+    final rows = [
+      {
+        'id': 'recent-unpinned',
+        'title': 'Recent',
+        'last_message_preview': 'recent',
+        'provider_id': 'provider-1',
+        'model_id': 'gpt-4o-mini',
+        'created_at': DateTime.utc(2026, 5, 30).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 5, 30, 3).toIso8601String(),
+        'is_deleted': 0,
+        'is_pinned': 0,
+        'pinned_at': null,
+        'is_unread': 0,
+      },
+      {
+        'id': 'older-pinned',
+        'title': 'Pinned',
+        'last_message_preview': 'pinned',
+        'provider_id': 'provider-1',
+        'model_id': 'gpt-4o-mini',
+        'created_at': DateTime.utc(2026, 5, 30).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 5, 30, 1).toIso8601String(),
+        'is_deleted': 0,
+        'is_pinned': 1,
+        'pinned_at': pinnedAt,
+        'is_unread': 0,
+      },
+    ];
+
+    when(appDatabase.open).thenAnswer((_) async => database);
+    when(
+      () => database.query(
+        'session_metas',
+        columns: any(named: 'columns'),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+        orderBy: any(named: 'orderBy'),
+      ),
+    ).thenAnswer((invocation) async {
+      final orderBy = invocation.namedArguments[#orderBy] as String?;
+      final sorted = List<Map<String, Object?>>.from(rows);
+      if (orderBy == 'is_pinned DESC, pinned_at DESC, updated_at DESC') {
+        sorted.sort((a, b) {
+          final pinned = (b['is_pinned']! as int).compareTo(
+            a['is_pinned']! as int,
+          );
+          if (pinned != 0) {
+            return pinned;
+          }
+          final pinnedAtCompare = (b['pinned_at'] as String? ?? '').compareTo(
+            a['pinned_at'] as String? ?? '',
+          );
+          if (pinnedAtCompare != 0) {
+            return pinnedAtCompare;
+          }
+          return (b['updated_at']! as String).compareTo(
+            a['updated_at']! as String,
+          );
+        });
+      } else {
+        sorted.sort(
+          (a, b) => (b['updated_at']! as String).compareTo(
+            a['updated_at']! as String,
+          ),
+        );
+      }
+      return sorted;
+    });
+
+    final repository = PersistentSessionRepository(appDatabase);
+
+    final metas = await repository.listMetas();
+
+    expect(metas.map((meta) => meta.id), [
+      'older-pinned',
+      'recent-unpinned',
+    ]);
+  });
+
+  test('persistent repository round trips pinned and unread metadata',
+      () async {
+    final appDatabase = _MockAppDatabase();
+    final database = _MockDatabase();
+    final sessionRows = <String, Map<String, Object?>>{};
+    final metaRows = <String, Map<String, Object?>>{};
+    when(appDatabase.open).thenAnswer((_) async => database);
+    when(
+      () => database.insert(
+        'sessions',
+        any(),
+        conflictAlgorithm: any(named: 'conflictAlgorithm'),
+      ),
+    ).thenAnswer((invocation) async {
+      final values = Map<String, Object?>.from(
+        invocation.positionalArguments[1] as Map<String, Object?>,
+      );
+      sessionRows[values['id']! as String] = values;
+      return 1;
+    });
+    when(
+      () => database.insert(
+        'session_metas',
+        any(),
+        conflictAlgorithm: any(named: 'conflictAlgorithm'),
+      ),
+    ).thenAnswer((invocation) async {
+      final values = Map<String, Object?>.from(
+        invocation.positionalArguments[1] as Map<String, Object?>,
+      );
+      metaRows[values['id']! as String] = values;
+      return 1;
+    });
+    when(
+      () => database.query(
+        'sessions',
+        columns: any(named: 'columns'),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+        limit: any(named: 'limit'),
+      ),
+    ).thenAnswer((invocation) async {
+      final id = (invocation.namedArguments[#whereArgs] as List<Object?>).single
+          as String;
+      return [sessionRows[id]!];
+    });
+    when(
+      () => database.query(
+        'session_metas',
+        columns: any(named: 'columns'),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+        orderBy: any(named: 'orderBy'),
+      ),
+    ).thenAnswer((_) async => metaRows.values.toList());
+    final pinnedAt = DateTime.utc(2026, 5, 30, 4);
+    final repository = PersistentSessionRepository(appDatabase);
+
+    await repository.saveDocument(
+      _document(
+        id: 'flagged',
+        isPinned: true,
+        pinnedAt: pinnedAt,
+        isUnread: true,
+      ),
+    );
+
+    final meta = (await repository.listMetas()).single;
+    final loaded = await repository.loadDocument('flagged');
+
+    expect(meta.isPinned, isTrue);
+    expect(meta.pinnedAt, pinnedAt);
+    expect(meta.isUnread, isTrue);
+    expect(loaded!.isPinned, isTrue);
+    expect(loaded.pinnedAt, pinnedAt);
+    expect(loaded.isUnread, isTrue);
+  });
+
+  test('persistent repository hides soft deleted sessions', () async {
+    final appDatabase = _MockAppDatabase();
+    final database = _MockDatabase();
+    final sessionRows = <String, Map<String, Object?>>{};
+    final metaRows = <String, Map<String, Object?>>{};
+    when(appDatabase.open).thenAnswer((_) async => database);
+    when(
+      () => database.insert(
+        'sessions',
+        any(),
+        conflictAlgorithm: any(named: 'conflictAlgorithm'),
+      ),
+    ).thenAnswer((invocation) async {
+      final values = Map<String, Object?>.from(
+        invocation.positionalArguments[1] as Map<String, Object?>,
+      );
+      sessionRows[values['id']! as String] = values;
+      return 1;
+    });
+    when(
+      () => database.insert(
+        'session_metas',
+        any(),
+        conflictAlgorithm: any(named: 'conflictAlgorithm'),
+      ),
+    ).thenAnswer((invocation) async {
+      final values = Map<String, Object?>.from(
+        invocation.positionalArguments[1] as Map<String, Object?>,
+      );
+      metaRows[values['id']! as String] = values;
+      return 1;
+    });
+    when(
+      () => database.update(
+        'session_metas',
+        any(),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+      ),
+    ).thenAnswer((invocation) async {
+      final values = invocation.positionalArguments[1] as Map<String, Object?>;
+      final id = (invocation.namedArguments[#whereArgs] as List<Object?>).single
+          as String;
+      metaRows[id] = {...metaRows[id]!, ...values};
+      return 1;
+    });
+    when(
+      () => database.query(
+        'sessions',
+        columns: any(named: 'columns'),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+        limit: any(named: 'limit'),
+      ),
+    ).thenAnswer((invocation) async {
+      final id = (invocation.namedArguments[#whereArgs] as List<Object?>).single
+          as String;
+      if (metaRows[id]?['is_deleted'] == 1) {
+        return <Map<String, Object?>>[];
+      }
+      return [sessionRows[id]!];
+    });
+    when(
+      () => database.query(
+        'session_metas',
+        columns: any(named: 'columns'),
+        where: any(named: 'where'),
+        whereArgs: any(named: 'whereArgs'),
+        orderBy: any(named: 'orderBy'),
+      ),
+    ).thenAnswer((_) async {
+      return metaRows.values.where((row) => row['is_deleted'] == 0).toList();
+    });
+    final repository = PersistentSessionRepository(appDatabase);
+
+    await repository.saveDocument(_document(id: 'visible'));
+    await repository.saveDocument(_document(id: 'deleted'));
+    await repository.softDeleteSession('deleted');
+
+    expect((await repository.listMetas()).map((meta) => meta.id), ['visible']);
+    expect(await repository.loadDocument('deleted'), isNull);
+    expect(sessionRows, contains('deleted'));
+  });
+
   test('production session repository is persistent', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -253,6 +499,9 @@ ChatSessionDocument _document({
   String title = 'Title',
   DateTime? updatedAt,
   List<ChatMessage>? messages,
+  bool isPinned = false,
+  DateTime? pinnedAt,
+  bool isUnread = false,
 }) {
   final createdAt = DateTime.utc(2026, 5, 30);
   return ChatSessionDocument(
@@ -272,6 +521,9 @@ ChatSessionDocument _document({
     createdAt: createdAt,
     updatedAt: updatedAt ?? createdAt,
     schemaVersion: 1,
+    isPinned: isPinned,
+    pinnedAt: pinnedAt,
+    isUnread: isUnread,
   );
 }
 

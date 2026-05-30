@@ -99,9 +99,13 @@ CREATE TABLE IF NOT EXISTS session_metas (
   model_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  is_deleted INTEGER NOT NULL DEFAULT 0
+  is_deleted INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  pinned_at TEXT NULL,
+  is_unread INTEGER NOT NULL DEFAULT 0
 );
 ''');
+    await _ensureSessionMetaColumns(database);
     await database.execute('''
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -109,6 +113,30 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TEXT NOT NULL
 );
 ''');
+  }
+
+  Future<void> _ensureSessionMetaColumns(Database database) async {
+    final rows = await database.rawQuery('PRAGMA table_info(session_metas)');
+    final columnNames =
+        rows.map((row) => row['name']).whereType<String>().toSet();
+
+    if (!columnNames.contains('is_pinned')) {
+      await database.execute(
+        'ALTER TABLE session_metas '
+        'ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!columnNames.contains('pinned_at')) {
+      await database.execute(
+        'ALTER TABLE session_metas ADD COLUMN pinned_at TEXT NULL',
+      );
+    }
+    if (!columnNames.contains('is_unread')) {
+      await database.execute(
+        'ALTER TABLE session_metas '
+        'ADD COLUMN is_unread INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   Future<void> close() async {
