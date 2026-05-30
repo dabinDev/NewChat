@@ -12,11 +12,13 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.onReply,
     this.onEdit,
+    this.onImageTap,
   });
 
   final ChatMessage message;
   final ValueChanged<ChatMessage>? onReply;
   final ValueChanged<ChatMessage>? onEdit;
+  final ValueChanged<AttachmentRef>? onImageTap;
 
   bool get _isUser => message.role == ChatRole.user;
   bool get _canReply =>
@@ -79,7 +81,11 @@ class MessageBubble extends StatelessWidget {
                           preview: message.replyPreview?.trim() ?? '',
                           foreground: foreground,
                         ),
-                      for (final part in parts) _MessagePartView(part: part),
+                      for (final part in parts)
+                        _MessagePartView(
+                          part: part,
+                          onImageTap: onImageTap,
+                        ),
                       if (message.state == MessageState.streaming &&
                           parts.isEmpty)
                         _TypingIndicator(color: colorScheme.primary),
@@ -299,9 +305,13 @@ String _roleLabel(ChatRole? role) {
 }
 
 class _MessagePartView extends StatelessWidget {
-  const _MessagePartView({required this.part});
+  const _MessagePartView({
+    required this.part,
+    required this.onImageTap,
+  });
 
   final MessagePart part;
+  final ValueChanged<AttachmentRef>? onImageTap;
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +319,10 @@ class _MessagePartView extends StatelessWidget {
       case MessagePartType.text:
         return _MarkdownWithMath(data: part.text ?? '');
       case MessagePartType.image:
-        return _ImageThumbnail(attachment: part.attachment!);
+        return _ImageThumbnail(
+          attachment: part.attachment!,
+          onTap: onImageTap,
+        );
       case MessagePartType.error:
         return _InlineError(text: part.text ?? '');
       case MessagePartType.info:
@@ -421,29 +434,39 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
 }
 
 class _ImageThumbnail extends StatelessWidget {
-  const _ImageThumbnail({required this.attachment});
+  const _ImageThumbnail({
+    required this.attachment,
+    required this.onTap,
+  });
 
   final AttachmentRef attachment;
+  final ValueChanged<AttachmentRef>? onTap;
 
   @override
   Widget build(BuildContext context) {
     final file = File(attachment.localPath);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: ClipRRect(
+      child: InkWell(
+        key: const Key('message-image-thumbnail'),
         borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: 160,
-          height: 120,
-          child: Image.file(
-            file,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return ColoredBox(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Center(child: Icon(Icons.broken_image_outlined)),
-              );
-            },
+        onTap: onTap == null ? null : () => onTap!(attachment),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            key: const Key('message-image-box'),
+            width: 160,
+            height: 120,
+            child: Image.file(
+              file,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Center(child: Icon(Icons.broken_image_outlined)),
+                );
+              },
+            ),
           ),
         ),
       ),

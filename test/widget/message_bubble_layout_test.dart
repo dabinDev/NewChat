@@ -192,4 +192,34 @@ void main() {
     expect(find.text('Thinking'), findsOneWidget);
     expect(bubbleWidth, lessThan(180));
   });
+
+  testWidgets('image thumbnail has stable dimensions', (tester) async {
+    final message = ChatMessage(
+      id: 'image-message',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: [
+        MessagePart.image(
+          const AttachmentRef(
+            id: 'image-1',
+            localPath: '/missing/image.png',
+            mimeType: 'image/png',
+          ),
+        ),
+      ],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(message: message),
+        ),
+      ),
+    );
+
+    final size = tester.getSize(find.byKey(const Key('message-image-box')));
+    expect(size, const Size(160, 120));
+  });
 }

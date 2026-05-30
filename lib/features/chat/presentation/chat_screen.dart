@@ -6,6 +6,7 @@ import 'package:newchat/core/routing/app_back_button.dart';
 import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
+import 'package:newchat/features/chat/presentation/image_viewer_screen.dart';
 import 'package:newchat/features/chat/presentation/widgets/chat_input_bar.dart';
 import 'package:newchat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:newchat/features/demo/demo_data.dart';
@@ -154,6 +155,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   message: session.messages[index],
                   onReply: _setReplyQuote,
                   onEdit: _showEditMessageDialog,
+                  onImageTap: (attachment) => _openImageViewer(
+                    attachment: attachment,
+                    imageMessage: session.messages[index],
+                  ),
                 );
               },
             ),
@@ -418,6 +423,70 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  Future<void> _openImageViewer({
+    required AttachmentRef attachment,
+    required ChatMessage imageMessage,
+  }) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => ImageViewerScreen(
+          attachment: attachment,
+          initialPrompt: _nearestPromptFor(imageMessage),
+          onEditPrompt: (prompt) {
+            Navigator.of(context).pop();
+            _sendImageEditPrompt(imageMessage: imageMessage, prompt: prompt);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendImageEditPrompt({
+    required ChatMessage imageMessage,
+    required String prompt,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isSending = true);
+    try {
+      final chatController = ref.read(chatControllerProvider);
+      await chatController.sendImageEditPrompt(
+        imageMessage: imageMessage,
+        prompt: prompt,
+      );
+      if (mounted) {
+        setState(() {
+          _quote = null;
+          _session = chatController.currentDocument;
+          _title = _session?.title ?? _title;
+          _providerId = _session?.providerId ?? _providerId;
+          _modelId = _session?.modelId ?? _modelId;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  String _nearestPromptFor(ChatMessage imageMessage) {
+    final messages = _session?.messages ?? const <ChatMessage>[];
+    final index =
+        messages.indexWhere((message) => message.id == imageMessage.id);
+    if (index > 0) {
+      for (var i = index - 1; i >= 0; i -= 1) {
+        final message = messages[i];
+        if (message.role == ChatRole.user &&
+            message.fullText.trim().isNotEmpty) {
+          return message.fullText.trim();
+        }
+      }
+    }
+    return imageMessage.fullText.trim();
   }
 
   AttachmentRef? _firstImageAttachment(ChatMessage message) {
