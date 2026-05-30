@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newchat/core/errors/chat_error.dart';
+import 'package:newchat/features/chat/application/chat_context_builder.dart';
 import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/application/session_list_controller.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
@@ -37,6 +38,37 @@ void main() {
     expect(document.messages.last.fullText, 'hello world');
     expect(document.messages.last.parts, hasLength(1));
     expect(document.messages.last.parts.single.text, 'hello world');
+  });
+
+  test('sendMessage stores reply metadata and sends quote preface', () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+    );
+
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      title: 'New Chat',
+    );
+    await controller.sendMessage(
+      text: 'why?',
+      attachments: const [],
+      replyToMessageId: 'assistant-1',
+      replyPreview: 'Paris',
+    );
+
+    final userMessage = controller.currentDocument!.messages.first;
+    expect(userMessage.replyToMessageId, 'assistant-1');
+    expect(userMessage.replyPreview, 'Paris');
+    expect(fakeProvider.requests.single.messages.first.fullText, '''
+The user is replying to this earlier message:
+"Paris"
+
+User message:
+why?''');
   });
 
   test('failed stream marks assistant failed and stores error part', () async {
@@ -219,6 +251,215 @@ void main() {
     expect(retainedUser.editHistory, hasLength(1));
     expect(retainedUser.editHistory.single.text, 'helo');
     expect(retainedUser.editHistory.single.editedAt, firstEditAt);
+  });
+
+  test(
+      'editUserMessageAndRegenerate records history and removes later messages',
+      () async {
+    final repository = InMemorySessionRepository();
+    final image = AttachmentRef(
+      id: 'image-1',
+      localPath: '/tmp/current.png',
+      mimeType: 'image/png',
+    );
+    final user = ChatMessage(
+      id: 'user-1',
+      role: ChatRole.user,
+      state: MessageState.completed,
+      parts: [
+        const MessagePart.text('original prompt'),
+        MessagePart.image(image),
+      ],
+      createdAt: DateTime.utc(2026, 5, 30, 8),
+      updatedAt: DateTime.utc(2026, 5, 30, 8),
+    );
+    await repository.saveDocument(
+      _document(id: 'session-1', messages: [
+        user,
+        ChatMessage(
+          id: 'assistant-old',
+          role: ChatRole.assistant,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('old answer')],
+          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+        ),
+        ChatMessage(
+          id: 'user-later',
+          role: ChatRole.user,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('later prompt')],
+          createdAt: DateTime.utc(2026, 5, 30, 8, 2),
+          updatedAt: DateTime.utc(2026, 5, 30, 8, 2),
+        ),
+      ]),
+    );
+    final fakeProvider = FakeChatProvider(const [
+      ChatStreamDelta('new answer'),
+      ChatStreamDone(),
+    ]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+    );
+
+    await controller.loadSession('session-1');
+    await controller.editUserMessageAndRegenerate(
+      messageId: 'user-1',
+      text: '  edited prompt  ',
+    );
+
+    final messages = controller.currentDocument!.messages;
+    expect(messages.map((message) => message.id), ['user-1', messages.last.id]);
+    expect(messages.first.fullText, 'edited prompt');
+    expect(
+      messages.first.parts.where((part) => part.type == MessagePartType.image),
+      hasLength(1),
+    );
+    expect(messages.first.editedAt, isNotNull);
+    expect(messages.first.editHistory, hasLength(1));
+    expect(messages.first.editHistory.single.text, 'original prompt');
+    expect(messages.last.role, ChatRole.assistant);
+    expect(messages.last.fullText, 'new answer');
+    final providerUser = fakeProvider.requests.single.messages
+        .lastWhere((message) => message.role == ChatRole.user);
+    expect(providerUser.fullText, 'edited prompt');
+    expect(
+      providerUser.parts.where((part) => part.type == MessagePartType.image),
+      hasLength(1),
+    );
+  });
+
+  test('editUserMessageAndRegenerate rejects assistant messages', () async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(
+      _document(id: 'session-1', messages: [
+        ChatMessage(
+          id: 'assistant-1',
+          role: ChatRole.assistant,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('answer')],
+          createdAt: DateTime.utc(2026, 5, 30),
+          updatedAt: DateTime.utc(2026, 5, 30),
+        ),
+      ]),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const [ChatStreamDone()]),
+    );
+
+    await controller.loadSession('session-1');
+
+    await expectLater(
+      controller.editUserMessageAndRegenerate(
+        messageId: 'assistant-1',
+        text: 'edited',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('editUserMessageAndRegenerate rejects empty text and missing ids',
+      () async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(
+      _document(id: 'session-1', messages: [
+        ChatMessage(
+          id: 'user-1',
+          role: ChatRole.user,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('hello')],
+          createdAt: DateTime.utc(2026, 5, 30),
+          updatedAt: DateTime.utc(2026, 5, 30),
+        ),
+      ]),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const [ChatStreamDone()]),
+    );
+
+    await controller.loadSession('session-1');
+
+    await expectLater(
+      controller.editUserMessageAndRegenerate(messageId: 'user-1', text: '  '),
+      throwsA(isA<ArgumentError>()),
+    );
+    await expectLater(
+      controller.editUserMessageAndRegenerate(
+        messageId: 'missing',
+        text: 'edited',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test(
+      'requestFor persists generated context summary and uses compact messages',
+      () async {
+    final repository = InMemorySessionRepository();
+    final oldImage = AttachmentRef(
+      id: 'old-image',
+      localPath: '/tmp/old.png',
+      mimeType: 'image/png',
+    );
+    final latestImage = AttachmentRef(
+      id: 'latest-image',
+      localPath: '/tmp/latest.png',
+      mimeType: 'image/png',
+    );
+    await repository.saveDocument(
+      _document(id: 'session-1', messages: [
+        ChatMessage(
+          id: 'old-user',
+          role: ChatRole.user,
+          state: MessageState.completed,
+          parts: [
+            const MessagePart.text('old image prompt'),
+            MessagePart.image(oldImage),
+          ],
+          createdAt: DateTime.utc(2026, 5, 30, 8),
+          updatedAt: DateTime.utc(2026, 5, 30, 8),
+        ),
+        ChatMessage(
+          id: 'old-assistant',
+          role: ChatRole.assistant,
+          state: MessageState.completed,
+          parts: const [MessagePart.text('old answer')],
+          createdAt: DateTime.utc(2026, 5, 30, 8, 1),
+          updatedAt: DateTime.utc(2026, 5, 30, 8, 1),
+        ),
+      ]),
+    );
+    final fakeProvider = FakeChatProvider(const [ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      contextBuilder: const ChatContextBuilder(recentMessageLimit: 2),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.sendMessage(
+      text: 'latest image prompt',
+      attachments: [latestImage],
+    );
+
+    final savedDocument = (await repository.loadDocument('session-1'))!;
+    expect(savedDocument.contextSummary, contains('- user: old image prompt'));
+    expect(savedDocument.contextSummaryUpdatedAt, isNotNull);
+    final request = fakeProvider.requests.single;
+    expect(request.messages.first.role, ChatRole.system);
+    expect(request.messages.first.fullText, contains('Earlier conversation'));
+    expect(
+      request.messages.map((message) => message.id),
+      ['context-summary', 'old-assistant', request.messages.last.id],
+    );
+    final imageIds = request.messages
+        .expand((message) => message.parts)
+        .where((part) => part.type == MessagePartType.image)
+        .map((part) => part.attachment!.id);
+    expect(imageIds, ['latest-image']);
   });
 
   test('concurrent sendMessage throws while first stream completes', () async {

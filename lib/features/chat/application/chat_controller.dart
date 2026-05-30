@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:newchat/core/constants/app_constants.dart';
+import 'package:newchat/features/chat/application/chat_context_builder.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:newchat/features/chat/domain/chat_provider.dart';
@@ -28,13 +29,16 @@ class ChatController extends ChangeNotifier {
     required SessionRepository repository,
     required ChatProvider chatProvider,
     ProviderRepository? providerRepository,
+    ChatContextBuilder contextBuilder = const ChatContextBuilder(),
   })  : _repository = repository,
         _chatProvider = chatProvider,
-        _providerRepository = providerRepository;
+        _providerRepository = providerRepository,
+        _contextBuilder = contextBuilder;
 
   final SessionRepository _repository;
   final ChatProvider _chatProvider;
   final ProviderRepository? _providerRepository;
+  final ChatContextBuilder _contextBuilder;
   final Uuid _uuid = const Uuid();
 
   ChatSessionDocument? _currentDocument;
@@ -116,6 +120,8 @@ class ChatController extends ChangeNotifier {
   Future<void> sendMessage({
     required String text,
     required List<AttachmentRef> attachments,
+    String? replyToMessageId,
+    String? replyPreview,
   }) async {
     _throwIfGenerationActive();
     final document = _requireDocument();
@@ -131,6 +137,8 @@ class ChatController extends ChangeNotifier {
       ],
       createdAt: now,
       updatedAt: now,
+      replyToMessageId: replyToMessageId,
+      replyPreview: replyPreview,
     );
 
     _setCurrentDocument(
@@ -145,6 +153,67 @@ class ChatController extends ChangeNotifier {
     try {
       await _streamAssistantResponse(
         hasImageAttachments: attachments.isNotEmpty,
+      );
+    } finally {
+      _generationInProgress = false;
+    }
+  }
+
+  Future<void> editUserMessageAndRegenerate({
+    required String messageId,
+    required String text,
+  }) async {
+    _throwIfGenerationActive();
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) {
+      throw ArgumentError.value(text, 'text', 'Message text cannot be empty.');
+    }
+
+    final document = _requireDocument();
+    final messageIndex = document.messages.indexWhere(
+      (message) => message.id == messageId,
+    );
+    if (messageIndex == -1) {
+      throw StateError('Chat message not found: $messageId');
+    }
+
+    final original = document.messages[messageIndex];
+    if (original.role != ChatRole.user ||
+        original.state != MessageState.completed) {
+      throw StateError('Only completed user messages can be edited.');
+    }
+
+    _generationInProgress = true;
+    final now = DateTime.now().toUtc();
+    final imageParts = original.parts
+        .where((part) => part.type == MessagePartType.image)
+        .toList();
+    final editedMessage = _copyMessage(
+      original,
+      parts: [MessagePart.text(trimmedText), ...imageParts],
+      updatedAt: now,
+      editedAt: now,
+      editHistory: [
+        ...original.editHistory,
+        MessageEditEntry(text: original.fullText, editedAt: now),
+      ],
+    );
+
+    _setCurrentDocument(
+      _copyDocument(
+        document,
+        messages: [
+          ...document.messages.take(messageIndex),
+          editedMessage,
+        ],
+        updatedAt: now,
+      ),
+    );
+    await _repository.saveDocument(_currentDocument!);
+
+    try {
+      await _streamAssistantResponse(
+        hasImageAttachments: imageParts.isNotEmpty,
       );
     } finally {
       _generationInProgress = false;
@@ -402,6 +471,20 @@ class ChatController extends ChangeNotifier {
     ChatSessionDocument document, {
     required bool hasImageAttachments,
   }) async {
+    final context = _contextBuilder.build(document);
+    final requestMessages = context.messages;
+    if (context.summary != document.contextSummary ||
+        context.summaryUpdatedAt != document.contextSummaryUpdatedAt) {
+      final updatedDocument = _copyDocument(
+        document,
+        contextSummary: context.summary,
+        contextSummaryUpdatedAt: context.summaryUpdatedAt,
+        updatedAt: document.updatedAt,
+      );
+      _setCurrentDocument(updatedDocument);
+      await _repository.saveDocument(updatedDocument);
+    }
+
     final configured = await _configuredRequestParts(document);
     if (configured != null) {
       final (:provider, :model) = configured;
@@ -410,7 +493,7 @@ class ChatController extends ChangeNotifier {
         provider: provider,
         model: model,
         systemPrompt: document.systemPrompt,
-        messages: document.messages,
+        messages: requestMessages,
         stream: true,
       );
     }
@@ -434,7 +517,7 @@ class ChatController extends ChangeNotifier {
         supportsImages: true,
       ),
       systemPrompt: document.systemPrompt,
-      messages: document.messages,
+      messages: requestMessages,
       stream: true,
     );
   }
