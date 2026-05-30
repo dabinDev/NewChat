@@ -103,6 +103,35 @@ void main() {
     expect(controller.currentDocument!.title, 'Existing Chat');
   });
 
+  test('switchModel preserves loaded session context summary metadata',
+      () async {
+    final repository = InMemorySessionRepository();
+    final summaryUpdatedAt = DateTime.utc(2026, 5, 30, 8, 15);
+    final document = _document(
+      id: 'session-1',
+      contextSummary: 'User prefers short answers.',
+      contextSummaryUpdatedAt: summaryUpdatedAt,
+    );
+    await repository.saveDocument(document);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const []),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.switchModel(
+      providerId: 'provider-2',
+      modelId: 'gpt-4.1',
+    );
+
+    final currentDocument = controller.currentDocument!;
+    expect(currentDocument.contextSummary, 'User prefers short answers.');
+    expect(currentDocument.contextSummaryUpdatedAt, summaryUpdatedAt);
+    final savedDocument = (await repository.loadDocument('session-1'))!;
+    expect(savedDocument.contextSummary, 'User prefers short answers.');
+    expect(savedDocument.contextSummaryUpdatedAt, summaryUpdatedAt);
+  });
+
   test('loadSession throws StateError when session is missing', () async {
     final controller = ChatController(
       repository: InMemorySessionRepository(),
@@ -138,6 +167,58 @@ void main() {
     final assistant = controller.currentDocument!.messages.last;
     expect(assistant.state, MessageState.cancelled);
     await events.close();
+  });
+
+  test('retryLastFailed preserves retained user reply and edit metadata',
+      () async {
+    final repository = InMemorySessionRepository();
+    final editedAt = DateTime.utc(2026, 5, 30, 9, 10);
+    final firstEditAt = DateTime.utc(2026, 5, 30, 9);
+    final user = ChatMessage(
+      id: 'message-1',
+      role: ChatRole.user,
+      state: MessageState.completed,
+      parts: const [MessagePart.text('hello')],
+      createdAt: DateTime.utc(2026, 5, 30, 8),
+      updatedAt: DateTime.utc(2026, 5, 30, 8),
+      replyToMessageId: 'previous-message',
+      replyPreview: 'previous question',
+      editedAt: editedAt,
+      editHistory: [
+        MessageEditEntry(text: 'helo', editedAt: firstEditAt),
+      ],
+    );
+    await repository.saveDocument(
+      _document(id: 'session-1', messages: [
+        user,
+        ChatMessage(
+          id: 'assistant-1',
+          role: ChatRole.assistant,
+          state: MessageState.failed,
+          parts: const [MessagePart.text('old answer')],
+          createdAt: DateTime.utc(2026, 5, 30, 8),
+          updatedAt: DateTime.utc(2026, 5, 30, 8),
+        ),
+      ]),
+    );
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: FakeChatProvider(const [
+        ChatStreamDelta('retry answer'),
+        ChatStreamDone(),
+      ]),
+    );
+
+    await controller.loadSession('session-1');
+    await controller.retryLastFailed();
+
+    final retainedUser = controller.currentDocument!.messages.first;
+    expect(retainedUser.replyToMessageId, 'previous-message');
+    expect(retainedUser.replyPreview, 'previous question');
+    expect(retainedUser.editedAt, editedAt);
+    expect(retainedUser.editHistory, hasLength(1));
+    expect(retainedUser.editHistory.single.text, 'helo');
+    expect(retainedUser.editHistory.single.editedAt, firstEditAt);
   });
 
   test('concurrent sendMessage throws while first stream completes', () async {
@@ -647,6 +728,9 @@ ChatSessionDocument _document({
   String title = 'Title',
   String providerId = 'provider-1',
   String modelId = 'gpt-4o-mini',
+  List<ChatMessage>? messages,
+  String? contextSummary,
+  DateTime? contextSummaryUpdatedAt,
 }) {
   final now = DateTime.utc(2026, 5, 30);
   return ChatSessionDocument(
@@ -655,19 +739,22 @@ ChatSessionDocument _document({
     providerId: providerId,
     modelId: modelId,
     systemPrompt: '',
-    messages: [
-      ChatMessage(
-        id: 'message-1',
-        role: ChatRole.user,
-        state: MessageState.completed,
-        parts: const [MessagePart.text('hello')],
-        createdAt: now,
-        updatedAt: now,
-      ),
-    ],
+    messages: messages ??
+        [
+          ChatMessage(
+            id: 'message-1',
+            role: ChatRole.user,
+            state: MessageState.completed,
+            parts: const [MessagePart.text('hello')],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
     createdAt: now,
     updatedAt: now,
     schemaVersion: 1,
+    contextSummary: contextSummary,
+    contextSummaryUpdatedAt: contextSummaryUpdatedAt,
   );
 }
 

@@ -497,6 +497,8 @@ class _ChatRequestValidationException implements Exception {
   final String message;
 }
 
+const Object _copyUnset = Object();
+
 ChatSessionDocument _copyDocument(
   ChatSessionDocument document, {
   String? title,
@@ -504,6 +506,8 @@ ChatSessionDocument _copyDocument(
   String? modelId,
   List<ChatMessage>? messages,
   DateTime? updatedAt,
+  Object? contextSummary = _copyUnset,
+  Object? contextSummaryUpdatedAt = _copyUnset,
 }) =>
     ChatSessionDocument(
       id: document.id,
@@ -515,6 +519,12 @@ ChatSessionDocument _copyDocument(
       createdAt: document.createdAt,
       updatedAt: updatedAt ?? document.updatedAt,
       schemaVersion: document.schemaVersion,
+      contextSummary: identical(contextSummary, _copyUnset)
+          ? document.contextSummary
+          : contextSummary as String?,
+      contextSummaryUpdatedAt: identical(contextSummaryUpdatedAt, _copyUnset)
+          ? document.contextSummaryUpdatedAt
+          : contextSummaryUpdatedAt as DateTime?,
     );
 
 ChatSessionDocument _replaceMessage(
@@ -537,6 +547,10 @@ ChatMessage _copyMessage(
   MessageState? state,
   List<MessagePart>? parts,
   DateTime? updatedAt,
+  Object? replyToMessageId = _copyUnset,
+  Object? replyPreview = _copyUnset,
+  Object? editedAt = _copyUnset,
+  Object? editHistory = _copyUnset,
 }) =>
     ChatMessage(
       id: message.id,
@@ -545,6 +559,18 @@ ChatMessage _copyMessage(
       parts: parts ?? message.parts,
       createdAt: message.createdAt,
       updatedAt: updatedAt ?? message.updatedAt,
+      replyToMessageId: identical(replyToMessageId, _copyUnset)
+          ? message.replyToMessageId
+          : replyToMessageId as String?,
+      replyPreview: identical(replyPreview, _copyUnset)
+          ? message.replyPreview
+          : replyPreview as String?,
+      editedAt: identical(editedAt, _copyUnset)
+          ? message.editedAt
+          : editedAt as DateTime?,
+      editHistory: identical(editHistory, _copyUnset)
+          ? message.editHistory
+          : editHistory as List<MessageEditEntry>,
     );
 
 List<MessagePart> _appendMessagePart(
