@@ -138,20 +138,37 @@ class OpenAIProvider implements ChatProvider {
       }
 
       if (_isOpenAiImageGenerationModel(request.model)) {
-        final response = await _dio.postUri<Object?>(
-          _imageGenerationsUri(request.provider),
-          data: _buildOpenAiImageGenerationPayload(
-            model: request.model,
-            messages: request.messages,
-          ),
-          options: Options(
-            responseType: ResponseType.json,
-            headers: {
-              'Authorization': 'Bearer ${apiKey.trim()}',
-            },
-          ),
-        );
-        yield* _emitImageGenerationResponse(response.data);
+        final requestHasImageParts = _messagesHaveImageParts(request.messages);
+        try {
+          final response = await _dio.postUri<Object?>(
+            _imageGenerationsUri(request.provider),
+            data: _buildOpenAiImageGenerationPayload(
+              model: request.model,
+              messages: request.messages,
+            ),
+            options: Options(
+              responseType: ResponseType.json,
+              headers: {
+                'Authorization': 'Bearer ${apiKey.trim()}',
+              },
+            ),
+          );
+          yield* _emitImageGenerationResponse(response.data);
+        } on DioException catch (error) {
+          if (requestHasImageParts && error.response?.statusCode == 400) {
+            yield const ChatStreamFailed(
+              ChatError(
+                type: ChatErrorType.badRequest,
+                message:
+                    'The selected gateway/model does not support image editing '
+                    'from a reference image.',
+                statusCode: 400,
+              ),
+            );
+            return;
+          }
+          rethrow;
+        }
         return;
       }
 
@@ -563,6 +580,14 @@ Uri _imageGenerationsUri(ProviderConfig provider) {
 
 bool _isOpenAiImageGenerationModel(ModelConfig model) {
   return model.id.toLowerCase().startsWith('gpt-image');
+}
+
+bool _messagesHaveImageParts(List<ChatMessage> messages) {
+  return messages.any(
+    (message) => message.parts.any(
+      (part) => part.type == MessagePartType.image,
+    ),
+  );
 }
 
 Uri _endpointUri(String rawBaseUrl, String endpointPath) {

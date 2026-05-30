@@ -182,6 +182,53 @@ void main() {
     expect(url, isNot(contains('C:\\images\\cat.png')));
   });
 
+  test('buildOpenAiPayloadWithImages encodes quoted image context as data URL',
+      () async {
+    const quotePreface = '''
+The user is replying to this earlier image message:
+"[Image] product screenshot"
+
+User message:
+make the background darker''';
+
+    final payload = await buildOpenAiPayloadWithImages(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(
+          role: ChatRole.user,
+          parts: [
+            const MessagePart.text(quotePreface),
+            MessagePart.image(
+              const AttachmentRef(
+                id: 'quoted-image',
+                localPath: 'C:\\images\\quoted.png',
+                mimeType: 'image/png',
+              ),
+            ),
+          ],
+        ),
+      ],
+      stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('quoted png bytes'),
+    );
+
+    final messages = payload['messages']! as List<Object?>;
+    final message = messages.single! as Map<String, Object?>;
+    final content = message['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final imageUrl = image['image_url']! as Map<String, Object?>;
+
+    expect(content.first, {'type': 'text', 'text': quotePreface});
+    expect(image['type'], 'image_url');
+    expect(
+      imageUrl['url'],
+      'data:image/png;base64,cXVvdGVkIHBuZyBieXRlcw==',
+    );
+    expect(jsonEncode(payload), isNot(contains('C:\\images\\quoted.png')));
+  });
+
   test(
       'buildOpenAiPayloadWithImages includes only completed user and '
       'assistant history', () async {
@@ -487,6 +534,70 @@ void main() {
     expect(image.bytes, imageBytes);
     expect(image.mimeType, 'image/png');
     expect(events.last, isA<ChatStreamDone>());
+  });
+
+  test(
+      'OpenAIProvider reports unsupported reference image edits for '
+      'gpt-image 400s', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeHttpClientAdapter(
+        error: DioException(
+          requestOptions: RequestOptions(path: '/v1/images/generations'),
+          response: Response<Map<String, Object?>>(
+            requestOptions: RequestOptions(path: '/v1/images/generations'),
+            statusCode: 400,
+            data: const {
+              'error': {'message': 'unsupported input image'},
+            },
+          ),
+          type: DioExceptionType.badResponse,
+        ),
+      );
+    final provider = OpenAIProvider(
+      dio: dio,
+      readApiKey: (_) async => 'secret-key',
+    );
+
+    final events = await provider
+        .sendStream(
+          ChatRequest(
+            provider: _provider(),
+            model: const ModelConfig(
+              id: 'gpt-image-2',
+              displayName: 'GPT Image 2',
+              protocol: ProviderProtocol.openai,
+              supportsStreaming: false,
+              supportsImages: true,
+            ),
+            systemPrompt: '',
+            messages: [
+              _message(
+                role: ChatRole.user,
+                parts: [
+                  const MessagePart.text('make the background darker'),
+                  MessagePart.image(
+                    const AttachmentRef(
+                      id: 'quoted-image',
+                      localPath: 'C:\\images\\quoted.png',
+                      mimeType: 'image/png',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            stream: true,
+          ),
+        )
+        .toList();
+
+    expect(events, hasLength(1));
+    final failed = events.single as ChatStreamFailed;
+    expect(failed.error.type, ChatErrorType.badRequest);
+    expect(failed.error.statusCode, 400);
+    expect(
+      failed.error.message,
+      contains('does not support image editing from a reference image'),
+    );
   });
 
   test('OpenAIProvider normalizes base URLs that already include v1', () async {

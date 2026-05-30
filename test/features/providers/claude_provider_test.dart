@@ -187,6 +187,53 @@ void main() {
     expect(jsonEncode(payload), isNot(contains('C:\\images\\cat.png')));
   });
 
+  test('quoted image context uses base64 image source', () async {
+    const quotePreface = '''
+The user is replying to this earlier image message:
+"[Image] product screenshot"
+
+User message:
+make the background darker''';
+
+    final payload = await buildClaudePayloadWithImages(
+      provider: _provider(),
+      model: _model,
+      systemPrompt: '',
+      messages: [
+        _message(
+          role: ChatRole.user,
+          parts: [
+            const MessagePart.text(quotePreface),
+            MessagePart.image(
+              const AttachmentRef(
+                id: 'quoted-image',
+                localPath: 'C:\\images\\quoted.png',
+                mimeType: 'image/png',
+              ),
+            ),
+          ],
+        ),
+      ],
+      stream: true,
+      loadAttachmentBytes: (_) async => utf8.encode('quoted png bytes'),
+    );
+
+    final messages = payload['messages']! as List<Object?>;
+    final message = messages.single! as Map<String, Object?>;
+    final content = message['content']! as List<Object?>;
+    final image = content.last! as Map<String, Object?>;
+    final source = image['source']! as Map<String, Object?>;
+
+    expect(content.first, {'type': 'text', 'text': quotePreface});
+    expect(image['type'], 'image');
+    expect(source, {
+      'type': 'base64',
+      'media_type': 'image/png',
+      'data': 'cXVvdGVkIHBuZyBieXRlcw==',
+    });
+    expect(jsonEncode(payload), isNot(contains('C:\\images\\quoted.png')));
+  });
+
   test('buildClaudePayloadWithImages preserves compact context summary',
       () async {
     const summaryText = 'Earlier conversation summary:\n- user: old image';
