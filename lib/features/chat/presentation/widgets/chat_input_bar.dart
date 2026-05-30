@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
@@ -5,12 +7,14 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ChatQuoteDraft {
   const ChatQuoteDraft({
-    required this.messageId,
-    required this.preview,
+    this.messageId = '',
+    this.preview = '',
+    this.ref,
   });
 
   final String messageId;
   final String preview;
+  final MessageReplyRef? ref;
 }
 
 class ChatSendPayload {
@@ -19,12 +23,14 @@ class ChatSendPayload {
     required this.attachments,
     this.replyToMessageId,
     this.replyPreview,
+    this.replyRef,
   });
 
   final String text;
   final List<AttachmentRef> attachments;
   final String? replyToMessageId;
   final String? replyPreview;
+  final MessageReplyRef? replyRef;
 }
 
 typedef ChatSendCallback = void Function(ChatSendPayload payload);
@@ -102,8 +108,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       ChatSendPayload(
         text: _controller.text.trim(),
         attachments: List.unmodifiable(_attachments),
-        replyToMessageId: quote?.messageId,
-        replyPreview: quote?.preview,
+        replyToMessageId: quote?.ref?.messageId ?? quote?.messageId,
+        replyPreview: quote?.ref?.textPreview ?? quote?.preview,
+        replyRef: quote?.ref,
       ),
     );
     setState(() {
@@ -205,7 +212,9 @@ class _QuotePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final preview = quote.ref?.textPreview ?? quote.preview;
     return Container(
+      key: const Key('composer-quote'),
       margin: const EdgeInsets.fromLTRB(4, 2, 4, 6),
       padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
       decoration: BoxDecoration(
@@ -220,14 +229,41 @@ class _QuotePreview extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (quote.ref?.imageAttachment != null) ...[
+            _QuoteImage(
+              key: const Key('composer-quote-image'),
+              attachment: quote.ref!.imageAttachment!,
+            ),
+            const SizedBox(width: 8),
+          ] else ...[
+            Icon(
+              Icons.format_quote_outlined,
+              size: 18,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
-            child: Text(
-              quote.preview,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _roleLabel(quote.ref?.role),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                if (preview.trim().isNotEmpty)
+                  Text(
+                    preview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                   ),
+              ],
             ),
           ),
           IconButton(
@@ -240,4 +276,41 @@ class _QuotePreview extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuoteImage extends StatelessWidget {
+  const _QuoteImage({
+    super.key,
+    required this.attachment,
+  });
+
+  final AttachmentRef attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Image.file(
+          File(attachment.localPath),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Icon(Icons.broken_image_outlined, size: 18),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _roleLabel(ChatRole? role) {
+  return switch (role) {
+    ChatRole.user => 'User',
+    ChatRole.assistant => 'Assistant',
+    ChatRole.system => 'System',
+    null => 'Reply',
+  };
 }

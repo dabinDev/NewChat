@@ -329,6 +329,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         attachments: payload.attachments,
         replyToMessageId: payload.replyToMessageId,
         replyPreview: payload.replyPreview,
+        replyRef: payload.replyRef,
       );
       if (mounted) {
         setState(() {
@@ -351,8 +352,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _setReplyQuote(ChatMessage message) {
     setState(() {
       _quote = ChatQuoteDraft(
-        messageId: message.id,
-        preview: _compactPreview(message.fullText),
+        ref: MessageReplyRef(
+          messageId: message.id,
+          role: message.role,
+          textPreview: _compactPreview(message.fullText),
+          imageAttachment: _firstImageAttachment(message),
+          createdAt: message.createdAt,
+        ),
       );
     });
   }
@@ -412,6 +418,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  AttachmentRef? _firstImageAttachment(ChatMessage message) {
+    for (final part in message.parts) {
+      if (part.type == MessagePartType.image && part.attachment != null) {
+        return part.attachment;
+      }
+    }
+    return null;
   }
 
   String _compactPreview(String text) {

@@ -71,10 +71,12 @@ class MessageBubble extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (message.replyPreview != null &&
-                          message.replyPreview!.trim().isNotEmpty)
+                      if ((message.replyPreview != null &&
+                              message.replyPreview!.trim().isNotEmpty) ||
+                          message.replyRef != null)
                         _BubbleQuotePreview(
-                          preview: message.replyPreview!.trim(),
+                          ref: message.replyRef,
+                          preview: message.replyPreview?.trim() ?? '',
                           foreground: foreground,
                         ),
                       for (final part in parts) _MessagePartView(part: part),
@@ -188,16 +190,19 @@ class _TypingIndicator extends StatelessWidget {
 
 class _BubbleQuotePreview extends StatelessWidget {
   const _BubbleQuotePreview({
+    required this.ref,
     required this.preview,
     required this.foreground,
   });
 
+  final MessageReplyRef? ref;
   final String preview;
   final Color foreground;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const Key('message-reply-block'),
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
@@ -211,16 +216,86 @@ class _BubbleQuotePreview extends StatelessWidget {
           ),
         ),
       ),
-      child: Text(
-        preview,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: foreground.withValues(alpha: 0.82),
+      child: Row(
+        children: [
+          if (ref?.imageAttachment != null) ...[
+            _ReplyImage(
+              key: const Key('message-reply-image'),
+              attachment: ref!.imageAttachment!,
+              foreground: foreground,
             ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _roleLabel(ref?.role),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: foreground.withValues(alpha: 0.78),
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                if (preview.isNotEmpty)
+                  Text(
+                    preview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: foreground.withValues(alpha: 0.82),
+                        ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _ReplyImage extends StatelessWidget {
+  const _ReplyImage({
+    super.key,
+    required this.attachment,
+    required this.foreground,
+  });
+
+  final AttachmentRef attachment;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Image.file(
+          File(attachment.localPath),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => ColoredBox(
+            color: foreground.withValues(alpha: 0.12),
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 18,
+              color: foreground.withValues(alpha: 0.75),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _roleLabel(ChatRole? role) {
+  return switch (role) {
+    ChatRole.user => 'User',
+    ChatRole.assistant => 'Assistant',
+    ChatRole.system => 'System',
+    null => 'Reply',
+  };
 }
 
 class _MessagePartView extends StatelessWidget {
