@@ -111,6 +111,123 @@ void main() {
     );
   });
 
+  test('chat message reply and edit metadata round trips', () {
+    final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
+    final editedAt = DateTime.utc(2026, 5, 30, 5, 6, 7);
+    final firstEditAt = DateTime.utc(2026, 5, 30, 4, 30);
+    final editHistory = [
+      MessageEditEntry(text: 'hello', editedAt: firstEditAt),
+    ];
+    final message = ChatMessage(
+      id: 'message-2',
+      role: ChatRole.assistant,
+      state: MessageState.completed,
+      parts: const [MessagePart.text('hello there')],
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      replyToMessageId: 'message-1',
+      replyPreview: 'original question',
+      editedAt: editedAt,
+      editHistory: editHistory,
+    );
+
+    editHistory.add(
+      MessageEditEntry(text: 'mutated', editedAt: DateTime.utc(2026, 5, 31)),
+    );
+
+    final json = message.toJson();
+    final copy = ChatMessage.fromJson(json);
+
+    expect(json['replyToMessageId'], 'message-1');
+    expect(json['replyPreview'], 'original question');
+    expect(json['editedAt'], editedAt.toIso8601String());
+    expect(json['editHistory'], [
+      {'text': 'hello', 'editedAt': firstEditAt.toIso8601String()},
+    ]);
+    expect(copy.replyToMessageId, 'message-1');
+    expect(copy.replyPreview, 'original question');
+    expect(copy.editedAt, editedAt);
+    expect(copy.editHistory, hasLength(1));
+    expect(copy.editHistory.single.text, 'hello');
+    expect(copy.editHistory.single.editedAt, firstEditAt);
+    expect(
+      () => copy.editHistory.add(
+        MessageEditEntry(text: 'direct mutation', editedAt: editedAt),
+      ),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('chat message JSON remains backward compatible', () {
+    final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
+    final message = ChatMessage.fromJson({
+      'id': 'message-1',
+      'role': 'user',
+      'state': 'completed',
+      'parts': [
+        {'type': 'text', 'text': 'hello', 'attachment': null},
+      ],
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    });
+
+    expect(message.replyToMessageId, isNull);
+    expect(message.replyPreview, isNull);
+    expect(message.editedAt, isNull);
+    expect(message.editHistory, isEmpty);
+    expect(
+      () => message.editHistory.add(
+        MessageEditEntry(text: 'direct mutation', editedAt: updatedAt),
+      ),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('chat session context summary round trips and old JSON defaults', () {
+    final createdAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final updatedAt = DateTime.utc(2026, 5, 30, 4, 5, 6);
+    final summaryUpdatedAt = DateTime.utc(2026, 5, 30, 6, 7, 8);
+    final document = ChatSessionDocument(
+      id: 'session-1',
+      title: 'Summary test',
+      providerId: 'provider-1',
+      modelId: 'gpt-4o-mini',
+      systemPrompt: 'Be concise.',
+      messages: const [],
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      schemaVersion: 1,
+      contextSummary: 'User prefers short answers.',
+      contextSummaryUpdatedAt: summaryUpdatedAt,
+    );
+
+    final json = document.toJson();
+    final copy = ChatSessionDocument.fromJson(json);
+    final oldCopy = ChatSessionDocument.fromJson({
+      'id': 'session-2',
+      'title': 'Old session',
+      'providerId': 'provider-1',
+      'modelId': 'gpt-4o-mini',
+      'systemPrompt': '',
+      'messages': <Object?>[],
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'schemaVersion': 1,
+    });
+
+    expect(json['contextSummary'], 'User prefers short answers.');
+    expect(
+      json['contextSummaryUpdatedAt'],
+      summaryUpdatedAt.toIso8601String(),
+    );
+    expect(copy.contextSummary, 'User prefers short answers.');
+    expect(copy.contextSummaryUpdatedAt, summaryUpdatedAt);
+    expect(oldCopy.contextSummary, isNull);
+    expect(oldCopy.contextSummaryUpdatedAt, isNull);
+  });
+
   test('constructors defensively copy and expose immutable lists', () {
     final messageParts = [const MessagePart.text('hello')];
     final message = ChatMessage(

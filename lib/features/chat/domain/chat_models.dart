@@ -64,6 +64,8 @@ class ChatSessionDocument {
     required this.createdAt,
     required this.updatedAt,
     required this.schemaVersion,
+    this.contextSummary,
+    this.contextSummaryUpdatedAt,
   }) : messages = List.unmodifiable(messages);
 
   final String id;
@@ -75,6 +77,8 @@ class ChatSessionDocument {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int schemaVersion;
+  final String? contextSummary;
+  final DateTime? contextSummaryUpdatedAt;
 
   ChatSessionMeta get meta => ChatSessionMeta(
         id: id,
@@ -102,6 +106,8 @@ class ChatSessionDocument {
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
         'schemaVersion': schemaVersion,
+        'contextSummary': contextSummary,
+        'contextSummaryUpdatedAt': contextSummaryUpdatedAt?.toIso8601String(),
       };
 
   factory ChatSessionDocument.fromJson(Map<String, Object?> json) =>
@@ -118,6 +124,31 @@ class ChatSessionDocument {
         createdAt: DateTime.parse(json['createdAt']! as String),
         updatedAt: DateTime.parse(json['updatedAt']! as String),
         schemaVersion: json['schemaVersion']! as int,
+        contextSummary: json['contextSummary'] as String?,
+        contextSummaryUpdatedAt: json['contextSummaryUpdatedAt'] == null
+            ? null
+            : DateTime.parse(json['contextSummaryUpdatedAt']! as String),
+      );
+}
+
+class MessageEditEntry {
+  const MessageEditEntry({
+    required this.text,
+    required this.editedAt,
+  });
+
+  final String text;
+  final DateTime editedAt;
+
+  Map<String, Object?> toJson() => {
+        'text': text,
+        'editedAt': editedAt.toIso8601String(),
+      };
+
+  factory MessageEditEntry.fromJson(Map<String, Object?> json) =>
+      MessageEditEntry(
+        text: json['text']! as String,
+        editedAt: DateTime.parse(json['editedAt']! as String),
       );
 }
 
@@ -129,7 +160,12 @@ class ChatMessage {
     required List<MessagePart> parts,
     required this.createdAt,
     required this.updatedAt,
-  }) : parts = List.unmodifiable(parts);
+    this.replyToMessageId,
+    this.replyPreview,
+    this.editedAt,
+    List<MessageEditEntry> editHistory = const [],
+  })  : parts = List.unmodifiable(parts),
+        editHistory = List.unmodifiable(editHistory);
 
   final String id;
   final ChatRole role;
@@ -137,6 +173,10 @@ class ChatMessage {
   final List<MessagePart> parts;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? replyToMessageId;
+  final String? replyPreview;
+  final DateTime? editedAt;
+  final List<MessageEditEntry> editHistory;
 
   String get fullText => parts
       .where((part) => part.type == MessagePartType.text)
@@ -150,6 +190,10 @@ class ChatMessage {
         'parts': parts.map((part) => part.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
+        'replyToMessageId': replyToMessageId,
+        'replyPreview': replyPreview,
+        'editedAt': editedAt?.toIso8601String(),
+        'editHistory': editHistory.map((entry) => entry.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
@@ -162,6 +206,15 @@ class ChatMessage {
             .toList(),
         createdAt: DateTime.parse(json['createdAt']! as String),
         updatedAt: DateTime.parse(json['updatedAt']! as String),
+        replyToMessageId: json['replyToMessageId'] as String?,
+        replyPreview: json['replyPreview'] as String?,
+        editedAt: json['editedAt'] == null
+            ? null
+            : DateTime.parse(json['editedAt']! as String),
+        editHistory: ((json['editHistory'] as List<Object?>?) ?? [])
+            .cast<Map<String, Object?>>()
+            .map(MessageEditEntry.fromJson)
+            .toList(),
       );
 }
 
