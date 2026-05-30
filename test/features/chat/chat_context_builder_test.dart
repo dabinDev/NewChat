@@ -94,7 +94,7 @@ void main() {
     expect(imageIds, ['latest-user-image']);
   });
 
-  test('adds quote preface only to current replied user turn', () {
+  test('adds quote preface to every recent replied user turn only', () {
     final result = ChatContextBuilder(recentMessageLimit: 4).build(
       _document(
         messages: [
@@ -108,6 +108,7 @@ void main() {
             id: 'assistant',
             role: ChatRole.assistant,
             text: 'answer',
+            replyPreview: 'Question',
           ),
           _message(
             id: 'current-reply',
@@ -123,7 +124,16 @@ void main() {
       result.messages
           .singleWhere((message) => message.id == 'older-reply')
           .fullText,
+      'The user is replying to this earlier message:\n'
+      '"Berlin"\n\n'
+      'User message:\n'
       'older why?',
+    );
+    expect(
+      result.messages
+          .singleWhere((message) => message.id == 'assistant')
+          .fullText,
+      'answer',
     );
     expect(
       result.messages
@@ -206,6 +216,22 @@ void main() {
       result.messages.skip(1).map((message) => message.id),
       ['user', 'assistant'],
     );
+  });
+
+  test('fills missing timestamp when unchanged summary exists', () {
+    final result = const ChatContextBuilder().build(
+      _document(
+        messages: [
+          _message(id: 'user', role: ChatRole.user, text: 'hello'),
+          _message(id: 'assistant', role: ChatRole.assistant, text: 'hi'),
+        ],
+        contextSummary: 'Existing summary.',
+      ),
+    );
+
+    expect(result.summary, 'Existing summary.');
+    expect(result.summaryUpdatedAt, isNotNull);
+    expect(result.summaryUpdatedAt!.isUtc, isTrue);
   });
 }
 

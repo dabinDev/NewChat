@@ -50,20 +50,21 @@ class ChatContextBuilder {
         _providerMessage(
           message,
           preserveImages: message.id == latestUserId,
-          addQuotePreface: message.id == latestUserId &&
-              message.role == ChatRole.user &&
-              _hasText(message.replyPreview),
+          addQuotePreface:
+              message.role == ChatRole.user && _hasText(message.replyPreview),
         ),
     ];
+
+    final summaryUpdatedAt = summary == null
+        ? null
+        : summaryChanged
+            ? DateTime.now().toUtc()
+            : document.contextSummaryUpdatedAt ?? DateTime.now().toUtc();
 
     return ChatContextBuildResult(
       messages: List.unmodifiable(providerMessages),
       summary: summary,
-      summaryUpdatedAt: summary == null
-          ? null
-          : summaryChanged
-              ? DateTime.now().toUtc()
-              : document.contextSummaryUpdatedAt,
+      summaryUpdatedAt: summaryUpdatedAt,
     );
   }
 
