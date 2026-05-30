@@ -32,12 +32,15 @@ class ChatContextBuilder {
     final older = completed.take(splitIndex);
     final recent = completed.skip(splitIndex).toList();
     final existingSummary = _normalizedSummary(document.contextSummary);
+    final existingSummaryLines = existingSummary?.split('\n').toSet() ?? {};
+    final olderSummaryLines = [
+      for (final message in older)
+        if (_summaryLine(message) case final line?)
+          if (!existingSummaryLines.contains(line)) line,
+    ];
     final summaryParts = [
       if (existingSummary != null) existingSummary,
-      if (existingSummary == null)
-        for (final message in older)
-          if (_compactText(message.fullText).isNotEmpty)
-            '- ${message.role.name}: ${_truncate(_compactText(message.fullText))}',
+      ...olderSummaryLines,
     ];
     final summary = summaryParts.isEmpty ? null : summaryParts.join('\n');
     final latestUserId = completed.reversed
@@ -74,6 +77,14 @@ class ChatContextBuilder {
       _hasText(summary) ? summary!.trim() : null;
 
   static bool _hasText(String? text) => text != null && text.trim().isNotEmpty;
+
+  static String? _summaryLine(ChatMessage message) {
+    final text = _compactText(message.fullText);
+    if (text.isEmpty) {
+      return null;
+    }
+    return '- ${message.role.name}: ${_truncate(text)}';
+  }
 
   static ChatMessage _summaryMessage(String summary) {
     final now = DateTime.now().toUtc();

@@ -248,7 +248,7 @@ void main() {
     );
   });
 
-  test('does not append older summary lines when existing summary is stable',
+  test('does not duplicate older summary lines already in existing summary',
       () {
     final summaryUpdatedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
     final messages = [
@@ -261,10 +261,15 @@ void main() {
         ),
     ];
 
+    const existingSummary = 'Existing compact summary.\n'
+        '- user: older text 0\n'
+        '- assistant: older text 1\n'
+        '- user: older text 2';
+
     final first = const ChatContextBuilder().build(
       _document(
         messages: messages,
-        contextSummary: 'Existing compact summary.',
+        contextSummary: existingSummary,
         contextSummaryUpdatedAt: summaryUpdatedAt,
       ),
     );
@@ -276,10 +281,52 @@ void main() {
       ),
     );
 
-    expect(first.summary, 'Existing compact summary.');
-    expect(second.summary, 'Existing compact summary.');
-    expect(second.summary, isNot(contains('- user: older text 0')));
+    expect(first.summary, existingSummary);
+    expect(second.summary, existingSummary);
+    expect(
+      RegExp(r'^- user: older text 0$', multiLine: true)
+          .allMatches(second.summary!)
+          .length,
+      1,
+    );
     expect(second.summaryUpdatedAt, summaryUpdatedAt);
+  });
+
+  test('appends newly aged out older lines missing from existing summary', () {
+    final summaryUpdatedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final messages = [
+      for (var index = 0; index < 16; index++)
+        _message(
+          id: 'message-$index',
+          role: index.isEven ? ChatRole.user : ChatRole.assistant,
+          text: 'older text $index',
+          createdAt: DateTime.utc(2026, 5, 30, 0, index),
+        ),
+    ];
+    const existingSummary = 'Existing compact summary.\n'
+        '- user: older text 0\n'
+        '- assistant: older text 1\n'
+        '- user: older text 2';
+
+    final result = const ChatContextBuilder().build(
+      _document(
+        messages: messages,
+        contextSummary: existingSummary,
+        contextSummaryUpdatedAt: summaryUpdatedAt,
+      ),
+    );
+
+    expect(
+      result.summary,
+      'Existing compact summary.\n'
+      '- user: older text 0\n'
+      '- assistant: older text 1\n'
+      '- user: older text 2\n'
+      '- assistant: older text 3',
+    );
+    expect(result.summaryUpdatedAt, isNot(summaryUpdatedAt));
+    expect(result.summaryUpdatedAt, isNotNull);
+    expect(result.summaryUpdatedAt!.isUtc, isTrue);
   });
 
   test('fills missing timestamp when unchanged summary exists', () {
