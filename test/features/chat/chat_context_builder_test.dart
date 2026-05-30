@@ -146,6 +146,39 @@ void main() {
     );
   });
 
+  test('preserves metadata on copied provider messages', () {
+    final editedAt = DateTime.utc(2026, 5, 30, 1, 2, 3);
+    final firstEditAt = DateTime.utc(2026, 5, 30, 0, 30);
+    final editHistory = [
+      MessageEditEntry(text: 'original message', editedAt: firstEditAt),
+    ];
+
+    final result = const ChatContextBuilder().build(
+      _document(
+        messages: [
+          _message(
+            id: 'replying-user',
+            role: ChatRole.user,
+            text: 'edited message',
+            replyToMessageId: 'assistant-1',
+            replyPreview: 'Earlier answer',
+            editedAt: editedAt,
+            editHistory: editHistory,
+          ),
+        ],
+      ),
+    );
+
+    final providerMessage = result.messages.single;
+
+    expect(providerMessage.replyToMessageId, 'assistant-1');
+    expect(providerMessage.replyPreview, 'Earlier answer');
+    expect(providerMessage.editedAt, editedAt);
+    expect(providerMessage.editHistory, hasLength(1));
+    expect(providerMessage.editHistory.single.text, 'original message');
+    expect(providerMessage.editHistory.single.editedAt, firstEditAt);
+  });
+
   test('excludes streaming failed cancelled interrupted and system messages',
       () {
     final result = const ChatContextBuilder().build(
@@ -262,7 +295,10 @@ ChatMessage _message({
   String text = '',
   MessageState state = MessageState.completed,
   List<MessagePart>? parts,
+  String? replyToMessageId,
   String? replyPreview,
+  DateTime? editedAt,
+  List<MessageEditEntry> editHistory = const [],
   DateTime? createdAt,
 }) =>
     ChatMessage(
@@ -272,7 +308,10 @@ ChatMessage _message({
       parts: parts ?? [MessagePart.text(text)],
       createdAt: createdAt ?? DateTime.utc(2026, 5, 30),
       updatedAt: createdAt ?? DateTime.utc(2026, 5, 30),
+      replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
+      editedAt: editedAt,
+      editHistory: editHistory,
     );
 
 AttachmentRef _attachment(String id) => AttachmentRef(
