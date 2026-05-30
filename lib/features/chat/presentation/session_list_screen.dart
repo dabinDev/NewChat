@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:newchat/core/routing/app_routes.dart';
+import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/application/session_list_controller.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -63,6 +64,11 @@ class _SessionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controller = SessionListController(
+      repository: ProviderScope.containerOf(context).read(
+        sessionRepositoryProvider,
+      ),
+    );
     return ListView.separated(
       padding: const EdgeInsets.all(12),
       itemCount: sessions.length,
@@ -77,20 +83,127 @@ class _SessionList extends StatelessWidget {
               session.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: session.isUnread
+                  ? const TextStyle(fontWeight: FontWeight.w700)
+                  : null,
             ),
             subtitle: Text(
               session.lastMessagePreview,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go(AppRoutes.chatPath(session.id)),
+            trailing: _SessionTrailing(
+              session: session,
+              controller: controller,
+            ),
+            onTap: () async {
+              if (session.isUnread) {
+                await controller.markRead(session.id);
+              }
+              if (context.mounted) {
+                context.go(AppRoutes.chatPath(session.id));
+              }
+            },
           ),
         );
       },
     );
   }
 }
+
+class _SessionTrailing extends StatelessWidget {
+  const _SessionTrailing({
+    required this.session,
+    required this.controller,
+  });
+
+  final ChatSessionMeta session;
+  final SessionListController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (session.isUnread)
+          Container(
+            key: const Key('session-unread-indicator'),
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              shape: BoxShape.circle,
+            ),
+          ),
+        if (session.isPinned)
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.push_pin_outlined, size: 18),
+          ),
+        PopupMenuButton<_SessionAction>(
+          tooltip: 'Session actions',
+          onSelected: (action) => _handleAction(context, action),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value:
+                  session.isPinned ? _SessionAction.unpin : _SessionAction.pin,
+              child: ListTile(
+                leading: Icon(
+                  session.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                ),
+                title: Text(session.isPinned ? 'Unpin' : 'Pin'),
+              ),
+            ),
+            PopupMenuItem(
+              value: session.isUnread
+                  ? _SessionAction.markRead
+                  : _SessionAction.markUnread,
+              child: ListTile(
+                leading: Icon(
+                  session.isUnread
+                      ? Icons.mark_chat_read_outlined
+                      : Icons.mark_chat_unread_outlined,
+                ),
+                title: Text(session.isUnread ? 'Mark read' : 'Mark unread'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: _SessionAction.delete,
+              child: ListTile(
+                leading: Icon(Icons.delete_outline),
+                title: Text('Delete'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleAction(
+    BuildContext context,
+    _SessionAction action,
+  ) async {
+    switch (action) {
+      case _SessionAction.pin:
+        await controller.pinSession(session.id);
+      case _SessionAction.unpin:
+        await controller.unpinSession(session.id);
+      case _SessionAction.markUnread:
+        await controller.markUnread(session.id);
+      case _SessionAction.markRead:
+        await controller.markRead(session.id);
+      case _SessionAction.delete:
+        await controller.softDeleteSession(session.id);
+    }
+    if (context.mounted) {
+      ProviderScope.containerOf(context).refresh(sessionListControllerProvider);
+    }
+  }
+}
+
+enum _SessionAction { pin, unpin, markUnread, markRead, delete }
 
 class _EmptyProviderState extends StatelessWidget {
   const _EmptyProviderState({

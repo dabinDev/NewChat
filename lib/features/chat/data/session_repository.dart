@@ -29,8 +29,7 @@ class InMemorySessionRepository implements SessionRepository {
 
   @override
   Future<List<ChatSessionMeta>> listMetas() async {
-    final metas = _documents.values.map(_toMeta).toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final metas = _documents.values.map(_toMeta).toList()..sort(_compareMetas);
     return metas;
   }
 
@@ -40,6 +39,19 @@ class InMemorySessionRepository implements SessionRepository {
   }
 
   ChatSessionMeta _toMeta(ChatSessionDocument document) => document.meta;
+}
+
+int _compareMetas(ChatSessionMeta a, ChatSessionMeta b) {
+  final pinned = (b.isPinned ? 1 : 0).compareTo(a.isPinned ? 1 : 0);
+  if (pinned != 0) {
+    return pinned;
+  }
+  final pinnedAt = (b.pinnedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+      .compareTo(a.pinnedAt ?? DateTime.fromMillisecondsSinceEpoch(0));
+  if (pinnedAt != 0) {
+    return pinnedAt;
+  }
+  return b.updatedAt.compareTo(a.updatedAt);
 }
 
 class PersistentSessionRepository implements SessionRepository {

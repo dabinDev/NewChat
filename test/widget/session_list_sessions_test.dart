@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:newchat/core/routing/app_routes.dart';
 import 'package:newchat/features/chat/application/chat_controller.dart';
 import 'package:newchat/features/chat/data/session_repository.dart';
 import 'package:newchat/features/chat/domain/chat_models.dart';
@@ -157,6 +159,103 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(inputBottom, lessThan(420));
   });
+
+  testWidgets('session list shows pinned sessions first with pin icon',
+      (tester) async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(
+      _sessionDocument(
+        id: 'recent',
+        title: 'Recent chat',
+        updatedAt: DateTime.utc(2026, 5, 30, 3),
+      ),
+    );
+    await repository.saveDocument(
+      _sessionDocument(
+        id: 'pinned',
+        title: 'Pinned chat',
+        updatedAt: DateTime.utc(2026, 5, 30, 1),
+        isPinned: true,
+        pinnedAt: DateTime.utc(2026, 5, 30, 2),
+      ),
+    );
+
+    await _pumpSessionList(tester, repository);
+
+    final pinnedTop = tester.getTopLeft(find.text('Pinned chat')).dy;
+    final recentTop = tester.getTopLeft(find.text('Recent chat')).dy;
+    expect(pinnedTop, lessThan(recentTop));
+    expect(find.byIcon(Icons.push_pin_outlined), findsOneWidget);
+  });
+
+  testWidgets('session menu toggles pin unread and delete', (tester) async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(_sessionDocument(id: 'session-1'));
+
+    await _pumpSessionList(tester, repository);
+
+    await tester.tap(find.byTooltip('Session actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pin'));
+    await tester.pumpAndSettle();
+    expect((await repository.loadDocument('session-1'))!.isPinned, isTrue);
+
+    await tester.tap(find.byTooltip('Session actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mark unread'));
+    await tester.pumpAndSettle();
+    expect((await repository.loadDocument('session-1'))!.isUnread, isTrue);
+    expect(find.byKey(const Key('session-unread-indicator')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Session actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(await repository.loadDocument('session-1'), isNull);
+    expect(find.text('Title session-1'), findsNothing);
+  });
+
+  testWidgets('opening unread session marks it read', (tester) async {
+    final repository = InMemorySessionRepository();
+    await repository.saveDocument(
+      _sessionDocument(id: 'session-1', isUnread: true),
+    );
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const SessionListScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.chat,
+          builder: (context, state) => const Scaffold(
+            body: Text('Chat target'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp.router(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Title session-1'));
+    await tester.pumpAndSettle();
+
+    expect((await repository.loadDocument('session-1'))!.isUnread, isFalse);
+    expect(find.text('Chat target'), findsOneWidget);
+  });
 }
 
 class _NeverCompletingSessionRepository implements SessionRepository {
@@ -173,4 +272,60 @@ class _NeverCompletingSessionRepository implements SessionRepository {
   @override
   Future<void> saveDocument(ChatSessionDocument document) =>
       Future<void>.value();
+
+  @override
+  Future<void> softDeleteSession(String id) => Future<void>.value();
+}
+
+Future<void> _pumpSessionList(
+  WidgetTester tester,
+  SessionRepository repository,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        sessionRepositoryProvider.overrideWithValue(repository),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: SessionListScreen(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+ChatSessionDocument _sessionDocument({
+  required String id,
+  String? title,
+  DateTime? updatedAt,
+  bool isPinned = false,
+  DateTime? pinnedAt,
+  bool isUnread = false,
+}) {
+  final now = DateTime.utc(2026, 5, 30);
+  return ChatSessionDocument(
+    id: id,
+    title: title ?? 'Title $id',
+    providerId: 'provider-1',
+    modelId: 'gpt-4o-mini',
+    systemPrompt: '',
+    messages: [
+      ChatMessage(
+        id: 'message-$id',
+        role: ChatRole.user,
+        state: MessageState.completed,
+        parts: [MessagePart.text('Preview $id')],
+        createdAt: now,
+        updatedAt: updatedAt ?? now,
+      ),
+    ],
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+    schemaVersion: 1,
+    isPinned: isPinned,
+    pinnedAt: pinnedAt,
+    isUnread: isUnread,
+  );
 }
