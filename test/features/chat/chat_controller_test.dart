@@ -458,6 +458,76 @@ void main() {
     expect(fakeProvider.requests, isEmpty);
   });
 
+  test('switchModel persists selection and sends images with new model',
+      () async {
+    final repository = InMemorySessionRepository();
+    final fakeProvider = FakeChatProvider([const ChatStreamDone()]);
+    final controller = ChatController(
+      repository: repository,
+      chatProvider: fakeProvider,
+      providerRepository: InMemoryProviderRepository(
+        providers: [
+          _provider(
+            id: 'provider-1',
+            protocol: ProviderProtocol.openai,
+            defaultModelId: 'text-only',
+          ),
+        ],
+        models: [
+          _model(
+            'text-only',
+            ProviderProtocol.openai,
+            supportsImages: false,
+          ),
+          _model(
+            'vision-model',
+            ProviderProtocol.openai,
+            supportsImages: true,
+          ),
+        ],
+      ),
+    );
+    await controller.createSession(
+      providerId: 'provider-1',
+      modelId: 'text-only',
+      title: 'New Chat',
+    );
+
+    await controller.switchModel(
+      providerId: 'provider-1',
+      modelId: 'vision-model',
+    );
+    await controller.sendMessage(
+      text: 'describe this',
+      attachments: const [
+        AttachmentRef(
+          id: 'image-1',
+          localPath: '/tmp/image.png',
+          mimeType: 'image/png',
+        ),
+      ],
+    );
+
+    final document = controller.currentDocument!;
+    expect(document.providerId, 'provider-1');
+    expect(document.modelId, 'vision-model');
+    expect(
+      (await repository.loadDocument(document.id))!.modelId,
+      'vision-model',
+    );
+    expect(fakeProvider.requests, hasLength(1));
+    expect(fakeProvider.requests.single.provider.id, 'provider-1');
+    expect(fakeProvider.requests.single.model.id, 'vision-model');
+    expect(
+      fakeProvider.requests.single.messages
+          .where((message) => message.role == ChatRole.user)
+          .last
+          .parts
+          .any((part) => part.type == MessagePartType.image),
+      isTrue,
+    );
+  });
+
   group('SessionListController', () {
     test('load reads repository metas', () async {
       final repository = InMemorySessionRepository();

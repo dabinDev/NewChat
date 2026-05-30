@@ -307,9 +307,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final controller = ref.read(chatControllerProvider);
       if (widget.sessionId == 'new' && _session == null) {
-        await controller.createSessionFromDefaultProvider(
-          title: l10nTitle(text),
-        );
+        if (_providerId.isNotEmpty && _modelId.isNotEmpty) {
+          await controller.createSession(
+            providerId: _providerId,
+            modelId: _modelId,
+            title: l10nTitle(text),
+          );
+        } else {
+          await controller.createSessionFromDefaultProvider(
+            title: l10nTitle(text),
+          );
+        }
       }
       await controller.sendMessage(text: text, attachments: attachments);
       if (mounted) {
@@ -390,37 +398,68 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _showSwitchModelSheet() async {
-    final selectedModel = await showModalBottomSheet<String>(
+    final providers =
+        await ref.read(providerControllerProvider).listProviders();
+    final models = await ref.read(providerControllerProvider).listModels();
+    final selections = _modelSelections(providers, models);
+    if (!mounted) {
+      return;
+    }
+
+    if (selections.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No compatible models are configured.')),
+      );
+      return;
+    }
+
+    final selected = await showModalBottomSheet<_ModelSelection>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('GPT-4o mini'),
-              subtitle: const Text('Demo OpenAI'),
-              selected: _modelId == 'GPT-4o mini',
-              onTap: () => Navigator.of(context).pop('GPT-4o mini'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.psychology_outlined),
-              title: const Text('Claude 3.5 Sonnet'),
-              subtitle: const Text('Demo Claude'),
-              selected: _modelId == 'Claude 3.5 Sonnet',
-              onTap: () => Navigator.of(context).pop('Claude 3.5 Sonnet'),
-            ),
-          ],
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: selections.length,
+          itemBuilder: (context, index) {
+            final selection = selections[index];
+            final model = selection.model;
+            final provider = selection.provider;
+            return ListTile(
+              leading: Icon(
+                model.supportsImages
+                    ? Icons.image_outlined
+                    : Icons.notes_outlined,
+              ),
+              title: Text(model.displayName),
+              subtitle: Text(
+                '${provider.name} / ${model.id}'
+                '${model.supportsImages ? ' / Images' : ' / Text only'}',
+              ),
+              selected: provider.id == _providerId && model.id == _modelId,
+              onTap: () => Navigator.of(context).pop(selection),
+            );
+          },
         ),
       ),
     );
 
-    if (selectedModel != null && mounted) {
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    final controller = ref.read(chatControllerProvider);
+    final document = controller.currentDocument;
+    if (document != null && document.id == _session?.id) {
+      await controller.switchModel(
+        providerId: selected.provider.id,
+        modelId: selected.model.id,
+      );
+    }
+
+    if (mounted) {
       setState(() {
-        _modelId = selectedModel;
-        _providerId =
-            selectedModel.startsWith('Claude') ? 'Demo Claude' : 'Demo OpenAI';
+        _modelId = selected.model.id;
+        _providerId = selected.provider.id;
       });
     }
   }
@@ -453,6 +492,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 }
 
 enum _ChatAction { rename, systemPrompt, switchModel, delete }
+
+class _ModelSelection {
+  const _ModelSelection({
+    required this.provider,
+    required this.model,
+  });
+
+  final ProviderConfig provider;
+  final ModelConfig model;
+}
+
+List<_ModelSelection> _modelSelections(
+  List<ProviderConfig> providers,
+  List<ModelConfig> models,
+) {
+  return [
+    for (final provider in providers)
+      for (final model in models)
+        if (provider.protocol == model.protocol)
+          _ModelSelection(provider: provider, model: model),
+  ];
+}
 
 ChatSessionDocument _emptySession(String sessionId) {
   final now = DateTime.now().toUtc();

@@ -86,6 +86,24 @@ class ChatController extends ChangeNotifier {
     );
   }
 
+  Future<void> switchModel({
+    required String providerId,
+    required String modelId,
+  }) async {
+    _throwIfGenerationActive();
+    final document = _requireDocument();
+    final now = DateTime.now().toUtc();
+    _setCurrentDocument(
+      _copyDocument(
+        document,
+        providerId: providerId,
+        modelId: modelId,
+        updatedAt: now,
+      ),
+    );
+    await _repository.saveDocument(_currentDocument!);
+  }
+
   Future<void> loadSession(String sessionId) async {
     _throwIfGenerationActive();
     final document = await _repository.loadDocument(sessionId);
@@ -482,14 +500,16 @@ class _ChatRequestValidationException implements Exception {
 ChatSessionDocument _copyDocument(
   ChatSessionDocument document, {
   String? title,
+  String? providerId,
+  String? modelId,
   List<ChatMessage>? messages,
   DateTime? updatedAt,
 }) =>
     ChatSessionDocument(
       id: document.id,
       title: title ?? document.title,
-      providerId: document.providerId,
-      modelId: document.modelId,
+      providerId: providerId ?? document.providerId,
+      modelId: modelId ?? document.modelId,
       systemPrompt: document.systemPrompt,
       messages: messages ?? document.messages,
       createdAt: document.createdAt,

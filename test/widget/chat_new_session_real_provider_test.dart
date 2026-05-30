@@ -229,6 +229,81 @@ void main() {
 
     expect(find.text('streamed answer'), findsOneWidget);
   });
+
+  testWidgets('switch model sheet uses real models and persists selection',
+      (tester) async {
+    final sessionRepository = InMemorySessionRepository();
+    final chatProvider = _RecordingChatProvider();
+    final providerRepository = InMemoryProviderRepository(
+      providers: [
+        _provider(
+          id: 'real-provider',
+          defaultModelId: 'text-only',
+        ),
+      ],
+      models: const [
+        ModelConfig(
+          id: 'text-only',
+          displayName: 'Text Only',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: false,
+        ),
+        ModelConfig(
+          id: 'vision-model',
+          displayName: 'Vision Model',
+          protocol: ProviderProtocol.openai,
+          supportsStreaming: true,
+          supportsImages: true,
+        ),
+      ],
+    );
+    final controller = ChatController(
+      repository: sessionRepository,
+      chatProvider: chatProvider,
+      providerRepository: providerRepository,
+    );
+    await controller.createSession(
+      providerId: 'real-provider',
+      modelId: 'text-only',
+      title: 'Existing session',
+    );
+    final sessionId = controller.currentDocument!.id;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(sessionRepository),
+          providerRepositoryProvider.overrideWithValue(providerRepository),
+          chatControllerProvider.overrideWithValue(controller),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatScreen(sessionId: sessionId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Switch Model'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GPT-4o mini'), findsNothing);
+    expect(find.text('Vision Model'), findsOneWidget);
+
+    await tester.tap(find.text('Vision Model'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('real-provider / vision-model'), findsOneWidget);
+    expect(controller.currentDocument!.modelId, 'vision-model');
+    expect(
+      (await sessionRepository.loadDocument(sessionId))!.modelId,
+      'vision-model',
+    );
+  });
 }
 
 Future<void> _sendText(WidgetTester tester, String text) async {
